@@ -19,7 +19,7 @@ export class WebsocketExceptionFilter extends BaseWsExceptionFilter {
 
     if (exception instanceof InternalError) {
       this.logger.error(
-        { clientId: client.id, exception },
+        { clientId: client.id, message: exception.message },
         'Websocket Exception',
       );
       const errorResponse = {
@@ -31,7 +31,7 @@ export class WebsocketExceptionFilter extends BaseWsExceptionFilter {
 
     if (exception instanceof WebsocketException) {
       this.logger.error(
-        { clientId: client.id, exception },
+        { clientId: client.id, message: exception.message },
         'Websocket Exception',
       );
       const errorResponse = {

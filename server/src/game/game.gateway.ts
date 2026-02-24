@@ -94,12 +94,12 @@ export class GameGateway
 
   beforeApplicationShutdown(signal?: string) {
     this.logger.info('beforeApplicationShutdown ' + signal);
-    this.logger.info(this.server.sockets.sockets);
+    this.logger.info({ sockets: this.server.sockets.sockets });
   }
 
   onApplicationShutdown(signal?: string) {
     this.logger.info('onApplicationShutdown ' + signal);
-    this.logger.info(this.server.sockets.sockets);
+    this.logger.info({ sockets: this.server.sockets.sockets });
   }
 
   @OnEvent('phase_changed')
