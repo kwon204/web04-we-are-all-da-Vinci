@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from 'nestjs-pino';
 import { corsOriginCallback } from './common/config/cors.util';
+import { CustomIoAdapter } from './custom-io.adapter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -14,6 +15,8 @@ async function bootstrap() {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
+
+  app.useWebSocketAdapter(new CustomIoAdapter(app));
 
   await app.listen(process.env.PORT ?? 3000);
 }
