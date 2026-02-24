@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { Logger } from 'nestjs-pino';
 import { corsOriginCallback } from './common/config/cors.util';
 import { CustomIoAdapter } from './custom-io.adapter';
+import { RedisService } from './redis/redis.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -16,7 +17,11 @@ async function bootstrap() {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
 
-  app.useWebSocketAdapter(new CustomIoAdapter(app));
+  const customIoAdapter = new CustomIoAdapter(
+    app,
+    app.get<RedisService>(RedisService),
+  );
+  app.useWebSocketAdapter(customIoAdapter);
 
   await app.listen(process.env.PORT ?? 3000);
 }
