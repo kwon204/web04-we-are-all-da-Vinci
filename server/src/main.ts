@@ -23,6 +23,8 @@ async function bootstrap() {
   );
   app.useWebSocketAdapter(customIoAdapter);
 
+  app.enableShutdownHooks();
+
   await app.listen(process.env.PORT ?? 3000);
 }
 void bootstrap();
