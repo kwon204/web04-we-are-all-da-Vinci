@@ -170,7 +170,20 @@ export class GameGateway
     }
     (client.data as Record<string, unknown>).profileId = profileId;
 
-    this.logger.info({ clientId: client.id, profileId }, 'New User Connected');
+    const recovery = (client.handshake.auth as Record<string, unknown>)
+      ?.recovery;
+    if (recovery) {
+      this.logger.info(
+        { clientId: client.id, profileId, recovery },
+        'Client Recovery',
+      );
+    } else {
+      this.logger.info(
+        { clientId: client.id, profileId, recovery },
+        'New User Connected',
+      );
+    }
+
     this.metricService.incConnection();
     client.addListener('disconnect', (reason: string) => {
       this.logger.info({ reason, id: client.id }, 'disconnect');
