@@ -96,8 +96,7 @@ export class GameGateway
     this.logger.info('beforeApplicationShutdown ' + signal);
     this.logger.info({ sockets: this.server.sockets.sockets });
     this.server.sockets.sockets.forEach((socket) => {
-      this.logger.info({ socket: socket });
-      socket.disconnect();
+      socket.emit('shutdown', { message: 'server shutdown' });
     });
   }
 
