@@ -173,6 +173,9 @@ export class GameGateway
 
     this.logger.info({ clientId: client.id, profileId }, 'New User Connected');
     this.metricService.incConnection();
+    client.addListener('disconnect', (reason: string) => {
+      this.logger.info({ reason, id: client.id }, 'disconnect');
+    });
   }
 
   async handleDisconnect(client: Socket) {
