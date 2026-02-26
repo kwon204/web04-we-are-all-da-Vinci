@@ -90,19 +90,16 @@ export class GameGateway
 
   onModuleDestroy() {
     this.logger.info('onModuleDestroy');
+
+    this.server.emit('service_restarting', { message: 'server restarting' });
   }
 
   beforeApplicationShutdown(signal?: string) {
     this.logger.info('beforeApplicationShutdown ' + signal);
-    this.logger.info({ sockets: this.server.sockets.sockets });
-    this.server.sockets.sockets.forEach((socket) => {
-      socket.emit('shutdown', { message: 'server shutdown' });
-    });
   }
 
   onApplicationShutdown(signal?: string) {
     this.logger.info('onApplicationShutdown ' + signal);
-    this.logger.info({ sockets: this.server.sockets.sockets });
   }
 
   @OnEvent('phase_changed')
