@@ -96,6 +96,8 @@ export class GameGateway
 
   beforeApplicationShutdown(signal?: string) {
     this.logger.info('beforeApplicationShutdown ' + signal);
+
+    this.server.emit('service_restarting', { message: 'server restarting' });
   }
 
   onApplicationShutdown(signal?: string) {
