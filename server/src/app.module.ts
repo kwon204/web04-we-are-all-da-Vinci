@@ -10,6 +10,7 @@ import { PromptModule } from './prompt/prompt.module';
 import { RedisModule } from './redis/redis.module';
 import { RoundModule } from './round/round.module';
 import { HealthModule } from './health/health.module';
+import { DynamicConfigModule } from './common/config/dynamic-config.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { HealthModule } from './health/health.module';
     ChatModule,
     MetricModule,
     HealthModule,
+    DynamicConfigModule,
   ],
 })
 export class AppModule {}
