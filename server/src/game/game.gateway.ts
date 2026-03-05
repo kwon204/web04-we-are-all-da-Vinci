@@ -99,8 +99,6 @@ export class GameGateway
 
   beforeApplicationShutdown(signal?: string) {
     this.logger.info('beforeApplicationShutdown ' + signal);
-
-    this.server.local.disconnectSockets(true);
   }
 
   onApplicationShutdown(signal?: string) {
