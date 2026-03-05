@@ -14,10 +14,12 @@ export class TimerCacheService {
   async addTimer(roomId: string, timeLeft: number) {
     const client = this.redisService.getClient();
     const key = RedisKeys.timer(roomId);
-    await client.hSet(key, {
-      roomId,
-      timeLeft,
-    });
+    const zKey = RedisKeys.timers();
+
+    await Promise.all([
+      client.hSet(key, { roomId, timeLeft }),
+      client.zAdd(zKey, { score: Date.now(), value: roomId }),
+    ]);
   }
 
   async getTimer(roomId: string): Promise<Timer | null> {
@@ -32,29 +34,21 @@ export class TimerCacheService {
     return { roomId: data.roomId, timeLeft: parseInt(data.timeLeft) };
   }
 
-  async getAllTimers(): Promise<Timer[]> {
+  async getAllTimers(): Promise<{ roomId: string; timestamp: number }[]> {
     const client = this.redisService.getClient();
-    const timers = [];
+    const zKey = RedisKeys.timers();
 
-    // Use SCAN instead of KEYS to avoid blocking Redis
-    let cursor = '0';
-    do {
-      const result = await client.scan(cursor, {
-        MATCH: 'timer:*',
-        COUNT: 100,
-      });
-      cursor = result.cursor;
+    const now = Date.now();
 
-      for (const key of result.keys) {
-        const data = await client.hGetAll(key);
-        if (data && Object.keys(data).length > 0) {
-          timers.push({
-            roomId: data.roomId,
-            timeLeft: parseInt(data.timeLeft),
-          });
-        }
-      }
-    } while (cursor !== '0');
+    const results = await Promise.all([
+      client.zRangeByScoreWithScores(zKey, 0, now),
+      client.zRemRangeByScore(zKey, 0, now),
+    ]);
+
+    const timers = results[0].map((timer) => ({
+      roomId: timer.value,
+      timestamp: timer.score,
+    }));
 
     return timers;
   }
@@ -77,6 +71,13 @@ export class TimerCacheService {
   async deleteTimer(roomId: string) {
     const client = this.redisService.getClient();
     const key = RedisKeys.timer(roomId);
-    await client.del(key);
+    const zKey = RedisKeys.timers();
+    await Promise.all([client.unlink(key), client.zRem(zKey, roomId)]);
+  }
+
+  async scheduleTimer(roomId: string, timestamp: number) {
+    const client = this.redisService.getClient();
+    const zKey = RedisKeys.timers();
+    await client.zAdd(zKey, { score: timestamp, value: roomId });
   }
 }
