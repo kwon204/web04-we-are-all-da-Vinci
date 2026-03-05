@@ -10,6 +10,7 @@ import { GameGateway } from './game.gateway';
 import { GameService } from './game.service';
 import { PlayerService } from './player.service';
 import { RoomService } from './room.service';
+import { DynamicConfigModule } from 'src/common/config/dynamic-config.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { RoomService } from './room.service';
     PromptModule,
     ChatModule,
     MetricModule,
+    DynamicConfigModule,
   ],
 
   controllers: [GameController],

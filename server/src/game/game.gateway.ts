@@ -45,6 +45,9 @@ import { RoundService } from 'src/round/round.service';
 import { GameService } from './game.service';
 import { PlayerService } from './player.service';
 import { RoomService } from './room.service';
+import { DynamicConfigService } from 'src/common/config/dynamic-config.service';
+import { Interval } from '@nestjs/schedule';
+import { PlayerCacheService } from 'src/redis/cache/player-cache.service';
 
 interface PhaseChangedEvent {
   roomId: string;
@@ -72,6 +75,7 @@ export class GameGateway
 
   constructor(
     private readonly logger: PinoLogger,
+    private readonly dynamicConfigService: DynamicConfigService,
     private readonly gameService: GameService,
     private readonly roomService: RoomService,
     private readonly playerService: PlayerService,
@@ -84,20 +88,19 @@ export class GameGateway
     private readonly promptService: PromptService,
     private readonly timerCacheService: TimerCacheService,
     private readonly gracePeriodCache: GracePeriodCacheService,
+    private readonly playerCache: PlayerCacheService,
   ) {
     this.logger.setContext(GameGateway.name);
   }
 
   onModuleDestroy() {
     this.logger.info('onModuleDestroy');
-
-    this.server.emit('service_restarting', { message: 'server restarting' });
   }
 
   beforeApplicationShutdown(signal?: string) {
     this.logger.info('beforeApplicationShutdown ' + signal);
 
-    this.server.emit('service_restarting', { message: 'server restarting' });
+    this.server.local.disconnectSockets(true);
   }
 
   onApplicationShutdown(signal?: string) {
@@ -154,6 +157,12 @@ export class GameGateway
   }
 
   handleConnection(client: Socket) {
+    if (this.dynamicConfigService.isGraining()) {
+      this.logger.warn({ id: client.id }, 'Connection denied. Server graning.');
+      client.disconnect(true);
+      return;
+    }
+
     const profileId = (client.handshake.auth as Record<string, unknown>)
       ?.profileId;
     if (!isValidUUIDv4(profileId)) {
@@ -169,19 +178,7 @@ export class GameGateway
     }
     (client.data as Record<string, unknown>).profileId = profileId;
 
-    const recovery = (client.handshake.auth as Record<string, unknown>)
-      ?.recovery;
-    if (recovery) {
-      this.logger.info(
-        { clientId: client.id, profileId, recovery },
-        'Client Recovery',
-      );
-    } else {
-      this.logger.info(
-        { clientId: client.id, profileId, recovery },
-        'New User Connected',
-      );
-    }
+    this.logger.info({ clientId: client.id, profileId }, 'New User Connected');
 
     this.metricService.incConnection();
     client.addListener('disconnect', (reason: string) => {
@@ -204,11 +201,11 @@ export class GameGateway
         );
 
         // 2.5초 후 cleanup 스케줄링 (Grace Period TTL 2초 + 여유 0.5초)
-        this.scheduleGracePeriodCleanup(
+        await this.scheduleGracePeriodCleanup(
           room.roomId,
           leaveResult.player.profileId,
-          leaveResult.player.nickname,
           client.id, // oldSocketId: 복구 확인용
+          leaveResult.player.nickname,
         );
 
         // 메타데이터만 브로드캐스트 (플레이어 목록 갱신)
@@ -241,66 +238,49 @@ export class GameGateway
    * Grace Period 만료 후 플레이어 삭제를 스케줄링
    * 복구되지 않은 플레이어만 삭제
    */
-  private scheduleGracePeriodCleanup(
+  private async scheduleGracePeriodCleanup(
     roomId: string,
     profileId: string,
-    nickname: string,
     oldSocketId: string,
+    nickname: string,
   ) {
-    setTimeout(() => {
-      void this.executeGracePeriodCleanup(
-        roomId,
-        profileId,
-        nickname,
-        oldSocketId,
-      );
-    }, 2500);
+    await this.gracePeriodCache.set(roomId, profileId, oldSocketId, nickname);
   }
 
-  private async executeGracePeriodCleanup(
-    roomId: string,
-    profileId: string,
-    nickname: string,
-    oldSocketId: string,
-  ) {
-    try {
-      const players = await this.playerService.getPlayers(roomId);
-      const player = players.find((p) => p.profileId === profileId);
+  @Interval(1000)
+  private async executeGracePeriodCleanup() {
+    const gracePeriodData = await this.gracePeriodCache.getUntil(Date.now());
 
-      // 플레이어가 없으면 이미 처리됨
-      if (!player) {
-        return;
+    if (gracePeriodData.length < 1) {
+      return;
+    }
+
+    for (const { roomId, profileId, socketId, nickname } of gracePeriodData) {
+      const currentConnectedSocket = await this.playerCache.getSocketByPlayer(
+        profileId,
+        roomId,
+      );
+
+      // 플레이어가 있다면 해당 socketId로 된 데이터 삭제
+      if (currentConnectedSocket) {
+        await this.playerService.removePlayer(roomId, socketId);
+        continue;
       }
 
       // socketId가 변경되었으면 복구된 것이므로 삭제하지 않음
-      if (player.socketId !== oldSocketId) {
+      if (currentConnectedSocket !== socketId) {
         this.logger.info(
           { roomId, profileId },
           'Player recovered with new socketId, skipping cleanup',
         );
-        return;
+        continue;
       }
 
-      // Grace Period 만료 확인 (이미 만료됐거나 복구 안됨)
-      const gracePeriodExists = await this.gracePeriodCache.exists(
-        roomId,
-        profileId,
-      );
-
-      // Grace Period가 아직 존재하면 아직 유예 중
-      if (gracePeriodExists) {
-        this.logger.warn(
-          { roomId, profileId },
-          'Grace period still exists, unexpected state',
-        );
-        return;
-      }
-
-      // 플레이어 완전 삭제
+      // 플레이어가 없으면 게임 플레이어 데이터 완전 삭제
       await this.playerService.forceRemovePlayer(roomId, profileId);
 
       this.logger.info(
-        { roomId, profileId, nickname },
+        { roomId, profileId },
         'Player removed after grace period expiry',
       );
 
@@ -314,14 +294,14 @@ export class GameGateway
       // 방 상태 확인
       const room = await this.roomService.getRoom(roomId);
       if (!room) {
-        return;
+        continue;
       }
 
       // 빈 방이면 삭제
       if (room.players.length === 0) {
         await this.roomService.deleteRoom(roomId);
         await this.chatService.clearHistory(roomId);
-        return;
+        continue;
       }
 
       // 혼자 남으면 게임 즉시 종료
@@ -335,13 +315,11 @@ export class GameGateway
           'Only one player left, ending game immediately',
         );
         await this.roundService.endGame(room);
-        return;
+        continue;
       }
 
       // 메타데이터 브로드캐스트
       this.broadcastMetadata(room);
-    } catch (err) {
-      this.logger.error(err, 'Grace period cleanup failed');
     }
   }
 

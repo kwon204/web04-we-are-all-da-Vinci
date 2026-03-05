@@ -11,6 +11,7 @@ import { RedisModule } from './redis/redis.module';
 import { RoundModule } from './round/round.module';
 import { HealthModule } from './health/health.module';
 import { DynamicConfigModule } from './common/config/dynamic-config.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { DynamicConfigModule } from './common/config/dynamic-config.module';
       },
     }),
     EventEmitterModule.forRoot({ delimiter: '_' }),
+    ScheduleModule.forRoot(),
     RedisModule,
     GameModule,
     PlayModule,
