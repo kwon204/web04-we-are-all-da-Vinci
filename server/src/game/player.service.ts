@@ -134,6 +134,7 @@ export class PlayerService {
       // 플레이어 데이터는 유지, playerCache만 삭제
       // (복구 시 updatePlayerSocketByProfileId로 socketId만 교체)
       await this.playerCache.removeSocketRoom(socketId);
+      await this.playerCache.removePlayerSocket(player.profileId, roomId);
 
       return { player, isGracePeriod: true };
     }
