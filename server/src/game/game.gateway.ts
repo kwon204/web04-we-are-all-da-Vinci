@@ -249,6 +249,7 @@ export class GameGateway
 
   @Interval(1000)
   private async executeGracePeriodCleanup() {
+    this.logger.info('executeGracePeriodCleanup');
     const gracePeriodData = await this.gracePeriodCache.getUntil(Date.now());
 
     if (gracePeriodData.length < 1) {

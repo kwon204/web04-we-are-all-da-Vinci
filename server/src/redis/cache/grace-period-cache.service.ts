@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { RedisService } from '../redis.service';
+import { RedisKeys } from '../redis-keys';
 
 const GRACE_PERIOD_TTL = 3; // 3초 유예 시간
 
@@ -28,7 +29,7 @@ export class GracePeriodCacheService {
     //   disconnectedAt: Date.now(),
     // };
 
-    const key = `gracePeriod`;
+    const key = RedisKeys.gracePeriod();
     const data = JSON.stringify({ roomId, profileId, socketId, nickname });
 
     await client.zAdd(key, {
@@ -60,7 +61,7 @@ export class GracePeriodCacheService {
   ): Promise<boolean> {
     const client = this.redisService.getClient();
     // const key = RedisKeys.gracePeriod(roomId, profileId, socketId);
-    const key = `gracePeriod`;
+    const key = RedisKeys.gracePeriod();
     const data = JSON.stringify({ roomId, profileId, socketId, nickname });
 
     return (await client.zScore(key, data)) !== null;
@@ -73,7 +74,7 @@ export class GracePeriodCacheService {
     nickname: string,
   ): Promise<void> {
     const client = this.redisService.getClient();
-    const key = `gracePeriod`;
+    const key = RedisKeys.gracePeriod();
     const data = JSON.stringify({ roomId, profileId, socketId, nickname });
 
     await client.zRem(key, data);
@@ -81,7 +82,7 @@ export class GracePeriodCacheService {
 
   async getUntil(time: number) {
     const client = this.redisService.getClient();
-    const key = `key`;
+    const key = RedisKeys.gracePeriod();
 
     const [rangeResult] = await client
       .multi()

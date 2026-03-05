@@ -42,6 +42,5 @@ export const RedisKeys = {
     `ratelimit:chat:${window}:${socketId}`,
 
   // Grace Period (새로고침 시 일시적 유예)
-  gracePeriod: (roomId: string, profileId: string, socketId: string) =>
-    `gracePeriod:${roomId}:${profileId}:${socketId}`,
+  gracePeriod: () => `gracePeriod`,
 } as const;
