@@ -274,7 +274,7 @@ export class GameGateway
       }
 
       // socketId가 변경되었으면 복구된 것이므로 삭제하지 않음
-      if (currentConnectedSocket !== socketId) {
+      if (!currentConnectedSocket && currentConnectedSocket !== socketId) {
         this.logger.info(
           { roomId, profileId },
           'Player recovered with new socketId, skipping cleanup',
