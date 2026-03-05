@@ -46,7 +46,7 @@ import { GameService } from './game.service';
 import { PlayerService } from './player.service';
 import { RoomService } from './room.service';
 import { DynamicConfigService } from 'src/common/config/dynamic-config.service';
-import { Interval } from '@nestjs/schedule';
+import { Interval, SchedulerRegistry } from '@nestjs/schedule';
 import { PlayerCacheService } from 'src/redis/cache/player-cache.service';
 
 interface PhaseChangedEvent {
@@ -89,12 +89,19 @@ export class GameGateway
     private readonly timerCacheService: TimerCacheService,
     private readonly gracePeriodCache: GracePeriodCacheService,
     private readonly playerCache: PlayerCacheService,
+
+    private readonly schedulerRegistry: SchedulerRegistry,
   ) {
     this.logger.setContext(GameGateway.name);
   }
 
   onModuleDestroy() {
     this.logger.info('onModuleDestroy');
+
+    const interval: NodeJS.Timeout = this.schedulerRegistry.getInterval(
+      'gracePeriodCleanup',
+    ) as NodeJS.Timeout;
+    clearInterval(interval);
   }
 
   beforeApplicationShutdown(signal?: string) {
@@ -223,7 +230,7 @@ export class GameGateway
       );
 
       if (isDeleted) {
-        this.chatService.clearHistory(room.roomId);
+        await this.chatService.clearHistory(room.roomId);
       }
 
       this.broadcastMetadata(room);
@@ -245,7 +252,7 @@ export class GameGateway
     await this.gracePeriodCache.set(roomId, profileId, oldSocketId, nickname);
   }
 
-  @Interval(1000)
+  @Interval('gracePeriodCleanup', 1000)
   private async executeGracePeriodCleanup() {
     this.logger.info('executeGracePeriodCleanup');
     const gracePeriodData = await this.gracePeriodCache.getUntil(Date.now());
