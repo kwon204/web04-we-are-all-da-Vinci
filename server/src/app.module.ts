@@ -10,6 +10,7 @@ import { PromptModule } from './prompt/prompt.module';
 import { RedisModule } from './redis/redis.module';
 import { RoundModule } from './round/round.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     PromptModule,
     ChatModule,
     MetricModule,
+    HealthModule,
   ],
 })
 export class AppModule {}
