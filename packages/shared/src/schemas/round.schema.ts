@@ -1,13 +1,23 @@
-import { z } from 'zod';
-import { StrokeSchema, SimilaritySchema } from './base.schema';
-import { RoundResultEntrySchema, GameResultEntrySchema, PlayerScoreSchema } from './result.schema';
+import { z } from "zod";
+import { StrokeSchema, SimilaritySchema } from "./base.schema";
+import {
+  RoundResultEntrySchema,
+  GameResultEntrySchema,
+  PlayerScoreSchema,
+} from "./result.schema";
 
 export const RoomPromptSchema = z.object({
   promptStrokes: z.array(StrokeSchema),
 });
 
 export const RoomTimerSchema = z.object({
+  roomId: z.string(),
+  round: z.number().int().min(0),
   timeLeft: z.number().int().min(0),
+  scheduledAt: z.number().int().nonnegative(),
+  processedAt: z.number().int().nonnegative(),
+  serverSentAt: z.number().int().nonnegative(),
+  processedByServerId: z.string(),
 });
 
 export const RoomRoundReplaySchema = z.object({

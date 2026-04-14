@@ -38,7 +38,6 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { WebsocketException } from 'src/common/exceptions/websocket-exception';
 import { PromptService } from 'src/prompt/prompt.service';
 import { GracePeriodCacheService } from 'src/redis/cache/grace-period-cache.service';
-import { TimerCacheService } from 'src/redis/cache/timer-cache.service';
 import { PhaseEvent } from 'src/round/phase.service';
 import { RoundService } from 'src/round/round.service';
 import { GameService } from './game.service';
@@ -47,6 +46,7 @@ import { RoomService } from './room.service';
 import { LifecycleService } from 'src/lifecycle/lifecycle.service';
 import { Interval, SchedulerRegistry } from '@nestjs/schedule';
 import { PlayerCacheService } from 'src/redis/cache/player-cache.service';
+import { TimerService } from 'src/timer/timer.service';
 
 interface PhaseChangedEvent {
   roomId: string;
@@ -83,7 +83,7 @@ export class GameGateway
 
     private readonly metricService: MetricService,
     private readonly promptService: PromptService,
-    private readonly timerCacheService: TimerCacheService,
+    private readonly timerService: TimerService,
     private readonly gracePeriodCache: GracePeriodCacheService,
     private readonly playerCache: PlayerCacheService,
 
@@ -587,9 +587,9 @@ export class GameGateway
       }
 
       // 3. 타이머 동기화
-      const timer = await this.timerCacheService.getTimer(roomId);
+      const timer = await this.timerService.getRecoveryTimerPayload(roomId);
       if (timer) {
-        client.emit(ClientEvents.ROOM_TIMER, { timeLeft: timer.timeLeft });
+        client.emit(ClientEvents.ROOM_TIMER, timer);
       }
 
       // 4. 채팅 히스토리 전송

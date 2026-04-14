@@ -94,6 +94,7 @@ describe('RoundService', () => {
       expect(mockPhaseService.prompt).toHaveBeenCalledWith(room);
       expect(mockTimerService.startTimer).toHaveBeenCalledWith(
         room.roomId,
+        room.currentRound,
         PROMPT_TIME,
       );
     });
@@ -124,6 +125,7 @@ describe('RoundService', () => {
       expect(mockPhaseService.drawing).toHaveBeenCalledWith(room);
       expect(mockTimerService.startTimer).toHaveBeenCalledWith(
         room.roomId,
+        room.currentRound,
         room.settings.drawingTime,
       );
     });
@@ -154,6 +156,7 @@ describe('RoundService', () => {
       expect(mockPhaseService.roundReplay).toHaveBeenCalledWith(room);
       expect(mockTimerService.startTimer).toHaveBeenCalledWith(
         room.roomId,
+        room.currentRound,
         ROUND_REPLAY_TIME,
       );
     });
@@ -184,6 +187,7 @@ describe('RoundService', () => {
       expect(mockPhaseService.roundStanding).toHaveBeenCalledWith(room);
       expect(mockTimerService.startTimer).toHaveBeenCalledWith(
         room.roomId,
+        room.currentRound,
         ROUND_STANDING_TIME,
       );
     });
@@ -214,6 +218,7 @@ describe('RoundService', () => {
       expect(mockPhaseService.prompt).toHaveBeenCalledWith(room);
       expect(mockTimerService.startTimer).toHaveBeenCalledWith(
         room.roomId,
+        room.currentRound,
         PROMPT_TIME,
       );
     });
@@ -244,6 +249,7 @@ describe('RoundService', () => {
       expect(mockPhaseService.gameEnd).toHaveBeenCalledWith(room);
       expect(mockTimerService.startTimer).toHaveBeenCalledWith(
         room.roomId,
+        room.currentRound,
         GAME_END_TIME,
       );
     });

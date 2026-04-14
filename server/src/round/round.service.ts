@@ -96,7 +96,11 @@ export class RoundService implements OnModuleInit {
       this.server.to(room.roomId).emit(name, payload);
     });
 
-    await this.timerService.startTimer(room.roomId, timeLeft);
+    await this.timerService.startTimer(
+      room.roomId,
+      room.currentRound,
+      timeLeft,
+    );
     this.logger.info({ room }, 'Prompt Phase Start');
 
     this.notifyPhaseChange(room.roomId, events);
@@ -109,7 +113,11 @@ export class RoundService implements OnModuleInit {
       this.server.to(room.roomId).emit(name, payload);
     });
 
-    await this.timerService.startTimer(room.roomId, timeLeft);
+    await this.timerService.startTimer(
+      room.roomId,
+      room.currentRound,
+      timeLeft,
+    );
     this.logger.info({ room }, 'Drawing Phase Start');
 
     this.notifyPhaseChange(room.roomId, events);
@@ -122,7 +130,11 @@ export class RoundService implements OnModuleInit {
       this.server.to(room.roomId).emit(name, payload);
     });
 
-    await this.timerService.startTimer(room.roomId, timeLeft);
+    await this.timerService.startTimer(
+      room.roomId,
+      room.currentRound,
+      timeLeft,
+    );
 
     this.logger.info({ room }, 'Round Replay Phase Start');
 
@@ -136,7 +148,11 @@ export class RoundService implements OnModuleInit {
       this.server.to(room.roomId).emit(name, payload);
     });
 
-    await this.timerService.startTimer(room.roomId, timeLeft);
+    await this.timerService.startTimer(
+      room.roomId,
+      room.currentRound,
+      timeLeft,
+    );
 
     this.logger.info({ room }, 'Round Standing Phase Start');
 
@@ -160,7 +176,11 @@ export class RoundService implements OnModuleInit {
       this.server.to(room.roomId).emit(name, payload);
     });
 
-    await this.timerService.startTimer(room.roomId, timeLeft);
+    await this.timerService.startTimer(
+      room.roomId,
+      room.currentRound,
+      timeLeft,
+    );
 
     this.logger.info('Game End Start');
     this.notifyPhaseChange(room.roomId, events);

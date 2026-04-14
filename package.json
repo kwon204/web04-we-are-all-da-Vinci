@@ -15,7 +15,10 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "perf:single": "DEBUG=socketio artillery run ./tests/artillery/single-room/load.test.yml --env-file=./tests/artillery/single-room/.env --output=./tests/artillery/single-room/output.json",
-    "perf:multi": "DEBUG=socketio artillery run ./tests/artillery/multi-room/load.test.yml --env-file=./tests/artillery/multi-room/.env --output=./tests/artillery/multi-room/output.json"
+    "perf:multi": "DEBUG=socketio artillery run ./tests/artillery/multi-room/load.test.yml --env-file=./tests/artillery/multi-room/.env --output=./tests/artillery/multi-room/output.json",
+    "perf:timer:baseline": "DEBUG=socketio artillery run ./tests/artillery/timer-verification/load.test.yml --env-file=./tests/artillery/timer-verification/.env.baseline.example --output=./tests/artillery/timer-verification/output.baseline.json",
+    "perf:timer:improved": "DEBUG=socketio artillery run ./tests/artillery/timer-verification/load.test.yml --env-file=./tests/artillery/timer-verification/.env.improved.example --output=./tests/artillery/timer-verification/output.improved.json",
+    "perf:timer:summary": "node ./tests/artillery/timer-verification/summarize.js"
   },
   "keywords": [],
   "author": "",

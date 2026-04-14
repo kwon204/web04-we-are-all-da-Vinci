@@ -5,6 +5,7 @@ import { PinoLogger } from 'nestjs-pino';
 import { ClientEvents } from '../common/constants';
 import { OnModuleInit } from '@nestjs/common';
 import { getSocketCorsOrigin } from 'src/common/config/cors.util';
+import type { RoomTimerDto } from '@shared/types';
 
 @WebSocketGateway({
   cors: {
@@ -25,12 +26,12 @@ export class TimerGateway implements OnModuleInit {
 
   onModuleInit() {
     // TimerService에 콜백 등록
-    this.timerService.setOnTimerTick((roomId: string, timeLeft: number) => {
-      this.broadcastTimer(roomId, timeLeft);
+    this.timerService.setOnTimerTick((payload: RoomTimerDto) => {
+      this.broadcastTimer(payload);
     });
   }
 
-  private broadcastTimer(roomId: string, timeLeft: number) {
-    this.server.to(roomId).emit(ClientEvents.ROOM_TIMER, { timeLeft });
+  private broadcastTimer(payload: RoomTimerDto) {
+    this.server.to(payload.roomId).emit(ClientEvents.ROOM_TIMER, payload);
   }
 }
