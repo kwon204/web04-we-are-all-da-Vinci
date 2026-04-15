@@ -270,26 +270,6 @@ function buildCommonTickSummary(ticks) {
   };
 }
 
-function buildProfileSummary(profileTicks, profileWriteBacks) {
-  if (!profileTicks.length && !profileWriteBacks.length) {
-    return null;
-  }
-
-  const luaEval = profileTicks.map((tick) => toNumber(tick.luaEvalMs));
-  const luaQuery = profileTicks.map((tick) => toNumber(tick.luaQueryMs));
-  const luaDelete = profileTicks.map((tick) => toNumber(tick.luaDeleteMs));
-  const hydrate = profileTicks.map((tick) => toNumber(tick.hydrateMs));
-  const writeBack = profileWriteBacks.map((value) => toNumber(value));
-
-  return {
-    luaEval: summarize(luaEval),
-    luaQuery: summarize(luaQuery),
-    luaDelete: summarize(luaDelete),
-    hydrate: summarize(hydrate),
-    writeBack: summarize(writeBack),
-  };
-}
-
 function buildRunSummary({
   runId,
   label,
@@ -297,8 +277,6 @@ function buildRunSummary({
   playerPerRoom,
   events,
   ticks,
-  profileTicks = [],
-  profileWriteBacks = [],
 }) {
   const receivedLatency = events.map((event) =>
     Math.max(0, toNumber(event.receivedAt) - toNumber(event.serverSentAt)),
@@ -308,24 +286,19 @@ function buildRunSummary({
     Math.max(0, toNumber(event.processedAt) - toNumber(event.scheduledAt)),
   );
 
-  const common = buildCommonTickSummary(ticks);
-  const profile = buildProfileSummary(profileTicks, profileWriteBacks);
-
   return {
     runId,
     label,
     roomCount,
     playerPerRoom,
-    benchmarkMode:
-      ticks[0]?.benchmarkMode ?? profileTicks[0]?.benchmarkMode ?? null,
+    benchmarkMode: ticks[0]?.benchmarkMode ?? null,
     eventCount: events.length,
     tickCount: ticks.length,
     cadence: buildCadenceSummary(events),
     metrics: {
       receivedLatency: summarize(receivedLatency),
       processedLatency: summarize(processedLatency),
-      common,
-      profile,
+      common: buildCommonTickSummary(ticks),
     },
   };
 }
@@ -414,24 +387,6 @@ function renderRunSection(summary) {
     renderMetricTable("Latency", latencyRows),
     renderMetricTable("Timer Tick Cost", timerRows),
   ].filter(Boolean);
-
-  if (summary.metrics.profile) {
-    sections.push(
-      renderMetricTable("Profiling", [
-        { label: "Lua eval time", summary: summary.metrics.profile.luaEval },
-        { label: "Lua query time", summary: summary.metrics.profile.luaQuery },
-        {
-          label: "Lua delete time",
-          summary: summary.metrics.profile.luaDelete,
-        },
-        { label: "Hydrate time", summary: summary.metrics.profile.hydrate },
-        {
-          label: "Profile write-back time",
-          summary: summary.metrics.profile.writeBack,
-        },
-      ]),
-    );
-  }
 
   return sections.join("\n");
 }
@@ -538,13 +493,9 @@ function renderComparison(primary, secondary) {
 async function loadRun(client, runId, label, roomCount, playerPerRoom) {
   const eventKey = `test:${runId}:timer:events`;
   const tickKey = `test:${runId}:timer:ticks`;
-  const profileKey = `test:${runId}:timer:profile`;
-  const profileWriteBackKey = `test:${runId}:timer:profile:writeback`;
-  const [events, ticks, profileTicks, profileWriteBacks] = await Promise.all([
+  const [events, ticks] = await Promise.all([
     readJsonList(client, eventKey),
     readJsonList(client, tickKey),
-    readJsonList(client, profileKey),
-    readJsonList(client, profileWriteBackKey),
   ]);
 
   return buildRunSummary({
@@ -554,8 +505,6 @@ async function loadRun(client, runId, label, roomCount, playerPerRoom) {
     playerPerRoom,
     events,
     ticks,
-    profileTicks,
-    profileWriteBacks,
   });
 }
 

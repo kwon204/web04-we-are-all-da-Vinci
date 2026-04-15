@@ -18,7 +18,6 @@
     "perf:multi": "DEBUG=socketio artillery run ./tests/artillery/multi-room/load.test.yml --env-file=./tests/artillery/multi-room/.env --output=./tests/artillery/multi-room/output.json",
     "perf:timer:baseline": "node ./tests/artillery/timer-verification/run.js --env-file ./tests/artillery/timer-verification/.env.baseline.example",
     "perf:timer:improved": "node ./tests/artillery/timer-verification/run.js --env-file ./tests/artillery/timer-verification/.env.improved.example",
-    "perf:timer:profile": "node ./tests/artillery/timer-verification/run.js --env-file ./tests/artillery/timer-verification/.env.profile.example",
     "perf:timer:summary": "node ./tests/artillery/timer-verification/summarize.js"
   },
   "keywords": [],

@@ -7,7 +7,6 @@ import {
   TimerCacheService,
   TimerSnapshot,
 } from 'src/redis/cache/timer-cache.service';
-import type { BenchmarkMode } from 'src/redis/cache/timer-cache.service';
 import { RedisService } from 'src/redis/redis.service';
 import type { RoomTimerDto } from '@shared/types';
 
@@ -17,11 +16,9 @@ export class TimerService implements OnModuleInit, OnModuleDestroy {
   private onTimerTickCallback?: (payload: RoomTimerDto) => void;
   private onTimerEndCallback?: (roomId: string) => Promise<void>;
   private readonly serverInstanceId: string;
-  private readonly benchmarkMode: BenchmarkMode;
+  private readonly benchmarkMode: 'baseline' | 'improved';
   private readonly benchmarkRunId?: string;
   private readonly benchmarkEventKey?: string;
-  private readonly benchmarkProfileEventKey?: string;
-  private readonly benchmarkProfileWriteBackEventKey?: string;
   private readonly eventLoopDelayMonitor?: ReturnType<
     typeof monitorEventLoopDelay
   >;
@@ -50,10 +47,6 @@ export class TimerService implements OnModuleInit, OnModuleDestroy {
 
     if (this.benchmarkRunId) {
       this.benchmarkEventKey = `test:${this.benchmarkRunId}:timer:ticks`;
-      if (this.benchmarkMode === 'profile') {
-        this.benchmarkProfileEventKey = `test:${this.benchmarkRunId}:timer:profile`;
-        this.benchmarkProfileWriteBackEventKey = `test:${this.benchmarkRunId}:timer:profile:writeback`;
-      }
       this.eventLoopDelayMonitor = monitorEventLoopDelay({ resolution: 20 });
       this.eventLoopDelayMonitor.enable();
     }
@@ -94,9 +87,7 @@ export class TimerService implements OnModuleInit, OnModuleDestroy {
     const tickStartedAt = performance.now();
     const cpuUsageBeforeTick = this.lastCpuUsage;
     const scanStartedAt = performance.now();
-    const expiredTimerBatch = await this.timerCacheService.popExpiredTimers(
-      this.benchmarkMode,
-    );
+    const expiredTimerBatch = await this.timerCacheService.popExpiredTimers();
     const scanMs = performance.now() - scanStartedAt;
 
     let decrementMs = 0;
@@ -121,6 +112,7 @@ export class TimerService implements OnModuleInit, OnModuleDestroy {
         const rescheduleStartedAt = performance.now();
         await this.timerCacheService.scheduleTimer(
           timer.roomId,
+          timer.round,
           timer.scheduledAt + 1000,
         );
         rescheduleMs += performance.now() - rescheduleStartedAt;
@@ -171,17 +163,6 @@ export class TimerService implements OnModuleInit, OnModuleDestroy {
 
     await this.recordBenchmarkTick(commonSample);
 
-    if (
-      this.benchmarkMode === 'profile' &&
-      this.benchmarkProfileEventKey &&
-      this.benchmarkProfileWriteBackEventKey
-    ) {
-      await this.recordBenchmarkProfileTick({
-        ...commonSample,
-        ...expiredTimerBatch.profileMetrics,
-      });
-    }
-
     if (this.eventLoopDelayMonitor) {
       this.eventLoopDelayMonitor.reset();
     }
@@ -216,7 +197,7 @@ export class TimerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private createTimerPayload(
-    timer: TimerSnapshot,
+    timer: Pick<TimerSnapshot, 'roomId' | 'round' | 'scheduledAt'>,
     timeLeft: number,
     processedAt: number,
   ): RoomTimerDto {
@@ -231,13 +212,11 @@ export class TimerService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private normalizeBenchmarkMode(value?: string | null): BenchmarkMode {
+  private normalizeBenchmarkMode(
+    value?: string | null,
+  ): 'baseline' | 'improved' {
     const normalized = value?.toLowerCase();
-    if (
-      normalized === 'baseline' ||
-      normalized === 'improved' ||
-      normalized === 'profile'
-    ) {
+    if (normalized === 'baseline' || normalized === 'improved') {
       return normalized;
     }
 
@@ -245,7 +224,7 @@ export class TimerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async recordBenchmarkTick(sample: {
-    benchmarkMode: BenchmarkMode;
+    benchmarkMode: 'baseline' | 'improved';
     tickStartedAt: number;
     tickEndedAt: number;
     scanMs: number;
@@ -275,55 +254,6 @@ export class TimerService implements OnModuleInit, OnModuleDestroy {
       );
     } catch (error) {
       this.logger.warn({ error }, 'Failed to write timer benchmark sample');
-    }
-  }
-
-  private async recordBenchmarkProfileTick(sample: {
-    benchmarkMode: BenchmarkMode;
-    tickStartedAt: number;
-    tickEndedAt: number;
-    scanMs: number;
-    decrementMs: number;
-    unlinkMs: number;
-    rescheduleMs: number;
-    timersProcessed: number;
-    cpuUserMs: number;
-    cpuSystemMs: number;
-    eventLoopDelayMs: number | null;
-    luaEvalMs?: number;
-    luaQueryMs?: number;
-    luaDeleteMs?: number;
-    hydrateMs?: number;
-  }) {
-    if (
-      !this.benchmarkProfileEventKey ||
-      !this.benchmarkProfileWriteBackEventKey
-    ) {
-      return;
-    }
-
-    try {
-      const client = this.redisService.getClient();
-      const writeBackStartedAt = performance.now();
-      const profilePayload = JSON.stringify({
-        ...sample,
-        totalTickMs: sample.tickEndedAt - sample.tickStartedAt,
-        cpuTotalMs: sample.cpuUserMs + sample.cpuSystemMs,
-        serverInstanceId: this.serverInstanceId,
-        capturedAt: Date.now(),
-      });
-      await client.rPush(this.benchmarkProfileEventKey, profilePayload);
-      const writeBackMs = performance.now() - writeBackStartedAt;
-
-      await client.rPush(
-        this.benchmarkProfileWriteBackEventKey,
-        String(writeBackMs),
-      );
-    } catch (error) {
-      this.logger.warn(
-        { error },
-        'Failed to write timer profile benchmark sample',
-      );
     }
   }
 }

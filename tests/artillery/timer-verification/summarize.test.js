@@ -82,7 +82,7 @@ test("sub-second intervals and skip anomalies are detected", () => {
   assert.equal(summary.roomRoundAnomalyCount, 1);
 });
 
-test("run summary separates common metrics from profiling metrics", () => {
+test("run summary keeps common tick metrics", () => {
   const event = createEvent({ scheduledAt: 1000, serverSentAt: 1000 });
   const summary = buildRunSummary({
     runId: "test-run",
@@ -103,22 +103,10 @@ test("run summary separates common metrics from profiling metrics", () => {
         eventLoopDelayMs: 6,
       },
     ],
-    profileTicks: [
-      {
-        benchmarkMode: "profile",
-        luaEvalMs: 8,
-        luaQueryMs: 2,
-        luaDeleteMs: 1,
-        hydrateMs: 4,
-      },
-    ],
-    profileWriteBacks: [5],
   });
 
   assert.equal(summary.metrics.common.scan.avg, 12);
   assert.equal(summary.metrics.common.decrement.avg, 3);
   assert.equal(summary.metrics.common.unlink.avg, 1);
   assert.equal(summary.metrics.common.totalTick.avg, 20);
-  assert.equal(summary.metrics.profile.luaEval.avg, 8);
-  assert.equal(summary.metrics.profile.writeBack.avg, 5);
 });

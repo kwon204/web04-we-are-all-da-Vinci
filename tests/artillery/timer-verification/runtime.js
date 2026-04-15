@@ -57,8 +57,6 @@ function createBenchmarkConfig(overrides = {}) {
     ),
     timerEmitKey: `test:${runId}:timer:events`,
     timerTickKey: `test:${runId}:timer:ticks`,
-    timerProfileKey: `test:${runId}:timer:profile`,
-    timerProfileWriteBackKey: `test:${runId}:timer:profile:writeback`,
     roomKey: `test:${runId}:rooms`,
     counterKey: `test:${runId}:counter`,
   };
@@ -88,8 +86,6 @@ function createBenchmarkRuntime(overrides = {}) {
       config.counterKey,
       config.timerEmitKey,
       config.timerTickKey,
-      config.timerProfileKey,
-      config.timerProfileWriteBackKey,
     ]);
     await client.set(config.counterKey, "0");
   }
