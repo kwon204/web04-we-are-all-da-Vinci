@@ -1,4 +1,5 @@
 require("dotenv").config();
+const { randomUUID } = require("node:crypto");
 const { createClient } = require("redis");
 /**
  * 상수 정의
@@ -257,4 +258,5 @@ module.exports = {
   waitRoundEnd,
   afterPostRoom,
   beforeAll,
+  DRAWING_DATA,
 };

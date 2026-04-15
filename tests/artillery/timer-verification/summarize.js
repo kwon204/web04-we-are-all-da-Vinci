@@ -51,6 +51,7 @@ function summarize(values) {
       avg: 0,
       p95: 0,
       p99: 0,
+      min: 0,
       max: 0,
     };
   }
@@ -63,6 +64,7 @@ function summarize(values) {
     avg: sum / values.length,
     p95: percentile(sorted, 0.95),
     p99: percentile(sorted, 0.99),
+    min: sorted[0],
     max: sorted[sorted.length - 1],
   };
 }
@@ -79,15 +81,17 @@ function renderMetricTable(title, rows) {
   const header = [
     `### ${title}`,
     "",
-    "| metric | avg | p95 | p99 | max |",
-    "| --- | ---: | ---: | ---: | ---: |",
+    "| metric | avg | p95 | p99 | min | max |",
+    "| --- | ---: | ---: | ---: | ---: | ---: |",
   ];
 
   const body = rows.map(
     (row) =>
       `| ${row.label} | ${formatNumber(row.summary.avg)} | ${formatNumber(
         row.summary.p95,
-      )} | ${formatNumber(row.summary.p99)} | ${formatNumber(row.summary.max)} |`,
+      )} | ${formatNumber(row.summary.p99)} | ${formatNumber(
+        row.summary.min,
+      )} | ${formatNumber(row.summary.max)} |`,
   );
 
   return [...header, ...body, ""].join("\n");
@@ -98,60 +102,147 @@ async function readJsonList(client, key) {
   return values.map((value) => JSON.parse(value));
 }
 
-function buildDuplicateSummary(events, playerPerRoom) {
-  const logicalGroups = new Map();
-  const roomGroups = new Map();
+function getRoomRoundKey(event) {
+  return `${event.roomId}:${event.round}`;
+}
+
+function getTimerStateKey(event) {
+  return `${event.roomId}:${event.round}:${event.scheduledAt}:${event.timeLeft}`;
+}
+
+function buildCadenceSummary(events) {
+  const roomRoundGroups = new Map();
 
   for (const event of events) {
-    const logicalKey = `${event.roomId}:${event.round}:${event.timeLeft}`;
-    const logical = logicalGroups.get(logicalKey) ?? [];
-    logical.push(event);
-    logicalGroups.set(logicalKey, logical);
+    const roomRoundKey = getRoomRoundKey(event);
+    const stateKey = getTimerStateKey(event);
 
-    const roomEntries = roomGroups.get(event.roomId) ?? [];
-    roomEntries.push(logicalKey);
-    roomGroups.set(event.roomId, roomEntries);
-  }
+    const roomRound = roomRoundGroups.get(roomRoundKey) ?? {
+      roomId: event.roomId,
+      round: event.round,
+      states: new Map(),
+    };
 
-  const duplicateExcessCounts = [];
-  const duplicateRatios = [];
-  const roomDuplicateRates = [];
+    const state = roomRound.states.get(stateKey) ?? {
+      roomId: event.roomId,
+      round: event.round,
+      scheduledAt: toNumber(event.scheduledAt),
+      timeLeft: toNumber(event.timeLeft),
+      serverSentAt: toNumber(event.serverSentAt, Number.POSITIVE_INFINITY),
+      processedAt: toNumber(event.processedAt, Number.POSITIVE_INFINITY),
+      receipts: 0,
+      processedByServers: new Set(),
+    };
 
-  let duplicateExcessCount = 0;
-
-  for (const keys of roomGroups.values()) {
-    const uniqueKeys = new Set(keys);
-    let roomDuplicateKeys = 0;
-
-    for (const logicalKey of uniqueKeys) {
-      const count = logicalGroups.get(logicalKey)?.length ?? 0;
-      const excess = Math.max(0, count - playerPerRoom);
-      if (excess > 0) {
-        roomDuplicateKeys += 1;
-        duplicateExcessCount += excess;
-        duplicateExcessCounts.push(excess);
-        duplicateRatios.push(excess / playerPerRoom);
-      }
+    state.receipts += 1;
+    state.serverSentAt = Math.min(
+      state.serverSentAt,
+      toNumber(event.serverSentAt, Number.POSITIVE_INFINITY),
+    );
+    state.processedAt = Math.min(
+      state.processedAt,
+      toNumber(event.processedAt, Number.POSITIVE_INFINITY),
+    );
+    if (event.processedByServerId) {
+      state.processedByServers.add(event.processedByServerId);
     }
 
-    const rate =
-      uniqueKeys.size === 0 ? 0 : roomDuplicateKeys / uniqueKeys.size;
-    roomDuplicateRates.push(rate);
+    roomRound.states.set(stateKey, state);
+    roomRoundGroups.set(roomRoundKey, roomRound);
   }
 
-  const totalReceipts = events.length;
-  const duplicateRatio =
-    totalReceipts === 0 ? 0 : duplicateExcessCount / totalReceipts;
+  const intervals = [];
+  const decrementDeltas = [];
+  let subSecondUpdateCount = 0;
+  let skipCount = 0;
+  let roomRoundAnomalyCount = 0;
+  let multiServerStateCount = 0;
+  let maxServerCountPerState = 0;
+  let lifecycleCount = 0;
+
+  for (const roomRound of roomRoundGroups.values()) {
+    const updates = [...roomRound.states.values()].sort((left, right) => {
+      if (left.serverSentAt !== right.serverSentAt) {
+        return left.serverSentAt - right.serverSentAt;
+      }
+      if (left.scheduledAt !== right.scheduledAt) {
+        return left.scheduledAt - right.scheduledAt;
+      }
+      return right.timeLeft - left.timeLeft;
+    });
+
+    let roomRoundHasAnomaly = false;
+    let previous = null;
+
+    for (const update of updates) {
+      if (!previous || update.timeLeft > previous.timeLeft) {
+        lifecycleCount += 1;
+        previous = update;
+        continue;
+      }
+
+      const interval = update.serverSentAt - previous.serverSentAt;
+      const decrement = previous.timeLeft - update.timeLeft;
+
+      intervals.push(interval);
+      decrementDeltas.push(decrement);
+
+      if (interval < 800) {
+        subSecondUpdateCount += 1;
+        roomRoundHasAnomaly = true;
+      }
+
+      if (decrement > 1) {
+        skipCount += 1;
+        roomRoundHasAnomaly = true;
+      }
+
+      previous = update;
+    }
+
+    if (roomRoundHasAnomaly) {
+      roomRoundAnomalyCount += 1;
+    }
+  }
+
+  const transitionCount = intervals.length;
+  const roomRoundCount = roomRoundGroups.size;
+  const updateCount = [...roomRoundGroups.values()].reduce(
+    (acc, roomRound) => acc + roomRound.states.size,
+    0,
+  );
+
+  for (const roomRound of roomRoundGroups.values()) {
+    for (const state of roomRound.states.values()) {
+      const serverCount = state.processedByServers.size;
+      if (serverCount > 1) {
+        multiServerStateCount += 1;
+      }
+      if (serverCount > maxServerCountPerState) {
+        maxServerCountPerState = serverCount;
+      }
+    }
+  }
 
   return {
-    totalReceipts,
-    logicalKeyCount: logicalGroups.size,
-    duplicateExcessCount,
-    duplicateRatio,
-    duplicateExcessSummary: summarize(duplicateExcessCounts),
-    duplicateRatioSummary: summarize(duplicateRatios),
-    roomDuplicateRateSummary: summarize(roomDuplicateRates),
-    roomsAffected: roomDuplicateRates.filter((rate) => rate > 0).length,
+    roomRoundCount,
+    updateCount,
+    lifecycleCount,
+    transitionCount,
+    subSecondUpdateCount,
+    subSecondUpdateRatio:
+      transitionCount === 0 ? 0 : subSecondUpdateCount / transitionCount,
+    skipCount,
+    skipRatio: transitionCount === 0 ? 0 : skipCount / transitionCount,
+    roomRoundAnomalyCount,
+    roomRoundAnomalyRatio:
+      roomRoundCount === 0 ? 0 : roomRoundAnomalyCount / roomRoundCount,
+    multiServerStateCount,
+    multiServerStateRatio:
+      updateCount === 0 ? 0 : multiServerStateCount / updateCount,
+    maxServerCountPerState,
+    updateIntervalSummary: summarize(intervals),
+    decrementDeltaSummary: summarize(decrementDeltas),
   };
 }
 
@@ -189,7 +280,7 @@ function buildRunSummary({
     playerPerRoom,
     eventCount: events.length,
     tickCount: ticks.length,
-    duplicate: buildDuplicateSummary(events, playerPerRoom),
+    cadence: buildCadenceSummary(events),
     metrics: {
       receivedLatency: summarize(receivedLatency),
       processedLatency: summarize(processedLatency),
@@ -206,18 +297,14 @@ function buildRunSummary({
 }
 
 function renderRunSection(summary) {
-  const duplicateRows = [
+  const cadenceRows = [
     {
-      label: "duplicate excess count",
-      summary: summary.duplicate.duplicateExcessSummary,
+      label: "update interval (serverSentAt diff)",
+      summary: summary.cadence.updateIntervalSummary,
     },
     {
-      label: "duplicate ratio",
-      summary: summary.duplicate.duplicateRatioSummary,
-    },
-    {
-      label: "room duplicate rate",
-      summary: summary.duplicate.roomDuplicateRateSummary,
+      label: "timeLeft decrement",
+      summary: summary.cadence.decrementDeltaSummary,
     },
   ];
 
@@ -273,13 +360,24 @@ function renderRunSection(summary) {
     `- run id: \`${summary.runId}\``,
     `- rooms: ${summary.roomCount}`,
     `- players per room: ${summary.playerPerRoom}`,
-    `- raw receipts: ${summary.duplicate.totalReceipts}`,
-    `- logical timer keys: ${summary.duplicate.logicalKeyCount}`,
-    `- duplicate excess count: ${summary.duplicate.duplicateExcessCount}`,
-    `- duplicate ratio: ${formatPercent(summary.duplicate.duplicateRatio)}`,
-    `- rooms affected by duplicates: ${summary.duplicate.roomsAffected}`,
+    `- raw receipts: ${summary.eventCount}`,
+    `- unique timer updates: ${summary.cadence.updateCount}`,
+    `- room-rounds: ${summary.cadence.roomRoundCount}`,
+    `- lifecycles: ${summary.cadence.lifecycleCount}`,
+    `- multi-server timer states: ${summary.cadence.multiServerStateCount} (${formatPercent(
+      summary.cadence.multiServerStateRatio,
+    )}, max servers per state: ${summary.cadence.maxServerCountPerState})`,
+    `- sub-second updates: ${summary.cadence.subSecondUpdateCount} (${formatPercent(
+      summary.cadence.subSecondUpdateRatio,
+    )})`,
+    `- skip anomalies: ${summary.cadence.skipCount} (${formatPercent(
+      summary.cadence.skipRatio,
+    )})`,
+    `- room-rounds affected by anomalies: ${summary.cadence.roomRoundAnomalyCount} (${formatPercent(
+      summary.cadence.roomRoundAnomalyRatio,
+    )})`,
     "",
-    renderMetricTable("Duplicate Analysis", duplicateRows),
+    renderMetricTable("Cadence", cadenceRows),
     renderMetricTable("Latency", latencyRows),
     renderMetricTable("Timer Tick Cost", timerRows),
   ].join("\n");
@@ -288,14 +386,35 @@ function renderRunSection(summary) {
 function renderComparison(primary, secondary) {
   const rows = [
     [
-      "duplicate excess count",
-      primary.duplicate.duplicateExcessCount,
-      secondary.duplicate.duplicateExcessCount,
+      "update interval avg",
+      primary.cadence.updateIntervalSummary.avg,
+      secondary.cadence.updateIntervalSummary.avg,
     ],
     [
-      "duplicate ratio",
-      primary.duplicate.duplicateRatio,
-      secondary.duplicate.duplicateRatio,
+      "update interval min",
+      primary.cadence.updateIntervalSummary.min,
+      secondary.cadence.updateIntervalSummary.min,
+    ],
+    [
+      "timeLeft decrement avg",
+      primary.cadence.decrementDeltaSummary.avg,
+      secondary.cadence.decrementDeltaSummary.avg,
+    ],
+    [
+      "sub-second update ratio",
+      primary.cadence.subSecondUpdateRatio,
+      secondary.cadence.subSecondUpdateRatio,
+    ],
+    ["skip ratio", primary.cadence.skipRatio, secondary.cadence.skipRatio],
+    [
+      "room-round anomaly ratio",
+      primary.cadence.roomRoundAnomalyRatio,
+      secondary.cadence.roomRoundAnomalyRatio,
+    ],
+    [
+      "multi-server state ratio",
+      primary.cadence.multiServerStateRatio,
+      secondary.cadence.multiServerStateRatio,
     ],
     [
       "receivedAt - serverSentAt avg",
@@ -455,7 +574,21 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  parseArgs,
+  percentile,
+  summarize,
+  buildCadenceSummary,
+  buildRunSummary,
+  renderRunSection,
+  renderComparison,
+  readJsonList,
+  main,
+};

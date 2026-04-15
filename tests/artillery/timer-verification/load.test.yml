@@ -6,18 +6,13 @@ config:
   processor: "./processor.js"
   socketio:
     transports: ["websocket"]
+    autoConnect: false
 
 before:
   flow:
     - function: "beforeAll"
     - loop:
-        - post:
-            url: "/room"
-            json:
-              maxPlayer: "{{ $env.MAX_PLAYER }}"
-              totalRounds: "{{ $env.TOTAL_ROUNDS }}"
-              drawingTime: "{{ $env.DRAWING_TIME }}"
-            afterResponse: "afterPostRoom"
+        - function: "postRoom"
       count: "{{ $env.ROOM_COUNT }}"
 
     - log: "Create Rooms"
