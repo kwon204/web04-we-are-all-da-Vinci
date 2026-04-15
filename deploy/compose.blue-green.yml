@@ -9,11 +9,18 @@ services:
     ports:
       - "3000:3000"
     env_file: .env
+    environment:
+      - SERVER_INSTANCE_ID=timer-server-blue
     restart: unless-stopped
     networks:
       - daVinci-web-network
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2g
     healthcheck:
       test:
         [
@@ -35,11 +42,18 @@ services:
     ports:
       - "3001:3000"
     env_file: .env
+    environment:
+      - SERVER_INSTANCE_ID=timer-server-green
     restart: unless-stopped
     networks:
       - daVinci-web-network
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2g
     healthcheck:
       test:
         [
