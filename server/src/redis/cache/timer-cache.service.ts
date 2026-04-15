@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { performance } from 'node:perf_hooks';
 import { RedisKeys } from '../redis-keys';
 import { RedisService } from '../redis.service';
+
+export type BenchmarkMode = 'baseline' | 'improved' | 'profile';
 
 export interface TimerSnapshot {
   roomId: string;
@@ -11,9 +14,20 @@ export interface TimerSnapshot {
 
 export interface ExpiredTimerBatch {
   timers: TimerSnapshot[];
-  queryMicros: number;
-  deleteMicros: number;
+  profileMetrics?: {
+    luaEvalMs: number;
+    luaQueryMs: number;
+    luaDeleteMs: number;
+    hydrateMs: number;
+  };
 }
+
+type DiscoveredDueTimers =
+  | {
+      roomIds: string[];
+      profileMetrics?: ExpiredTimerBatch['profileMetrics'];
+    }
+  | string[];
 
 @Injectable()
 export class TimerCacheService {
@@ -61,13 +75,29 @@ export class TimerCacheService {
     };
   }
 
-  async popExpiredTimers(): Promise<ExpiredTimerBatch> {
+  async popExpiredTimers(
+    mode: BenchmarkMode = 'improved',
+  ): Promise<ExpiredTimerBatch> {
     const client = this.redisService.getClient();
     const zKey = RedisKeys.timers();
 
     const now = Date.now();
+    const discoverDueRoomIds = async (): Promise<DiscoveredDueTimers> => {
+      if (mode === 'baseline') {
+        const result = await client
+          .multi()
+          .zRangeByScore(zKey, 0, now)
+          .zRemRangeByScore(zKey, 0, now)
+          .exec();
 
-    const luaScript = `
+        return ((result?.[0] as unknown as string[] | null) ?? []).filter(
+          Boolean,
+        );
+      }
+
+      const luaScript =
+        mode === 'profile'
+          ? `
       local zKey = KEYS[1]
       local now = tonumber(ARGV[1])
 
@@ -76,65 +106,113 @@ export class TimerCacheService {
       end
 
       local startedAt = redis.call("TIME")
-      local rangeResult = redis.call("ZRANGEBYSCORE", zKey, 0, now, "WITHSCORES")
+      local rangeResult = redis.call("ZRANGEBYSCORE", zKey, 0, now)
       local queryFinishedAt = redis.call("TIME")
       local removedCount = redis.call("ZREMRANGEBYSCORE", zKey, 0, now)
       local deletedAt = redis.call("TIME")
 
-      local timers = {}
-      for index = 1, #rangeResult, 2 do
-        table.insert(timers, {
-          roomId = rangeResult[index],
-          timestamp = tonumber(rangeResult[index + 1]),
-        })
-      end
-
       return cjson.encode({
-        timers = timers,
+        timers = rangeResult,
         queryMicros = toMicros(queryFinishedAt) - toMicros(startedAt),
         deleteMicros = toMicros(deletedAt) - toMicros(queryFinishedAt),
         removedCount = removedCount,
       })
+    `
+          : `
+      local zKey = KEYS[1]
+      local now = tonumber(ARGV[1])
+
+      local rangeResult = redis.call("ZRANGEBYSCORE", zKey, 0, now)
+      redis.call("ZREMRANGEBYSCORE", zKey, 0, now)
+
+      return cjson.encode({
+        timers = rangeResult,
+      })
     `;
 
-    const result = await client.eval(luaScript, {
-      keys: [zKey],
-      arguments: [String(now)],
-    });
+      const luaStartedAt = performance.now();
+      const result = await client.eval(luaScript, {
+        keys: [zKey],
+        arguments: [String(now)],
+      });
+      const luaEvalMs = performance.now() - luaStartedAt;
+      const rawResult = result as string;
 
-    const parsed = JSON.parse(result as string) as {
-      timers: Array<{ roomId: string; timestamp: number }>;
-      queryMicros: number;
-      deleteMicros: number;
-      removedCount: number;
+      if (mode !== 'profile') {
+        const parsed = JSON.parse(rawResult) as {
+          timers: string[];
+        };
+
+        return {
+          roomIds: parsed.timers.filter(Boolean),
+        };
+      }
+
+      const parsed = JSON.parse(rawResult) as {
+        timers: string[];
+        queryMicros: number;
+        deleteMicros: number;
+        removedCount: number;
+      };
+
+      return {
+        roomIds: parsed.timers.filter(Boolean),
+        profileMetrics: {
+          luaEvalMs,
+          luaQueryMs: parsed.queryMicros / 1000,
+          luaDeleteMs: parsed.deleteMicros / 1000,
+          hydrateMs: 0,
+        },
+      };
     };
 
+    const discovered = await discoverDueRoomIds();
+    const roomIds = Array.isArray(discovered) ? discovered : discovered.roomIds;
+
+    const hydrateStartedAt = performance.now();
     const timerSnapshots = await Promise.all(
-      parsed.timers.map(async (timer) => {
-        const data = await client.hGetAll(RedisKeys.timer(timer.roomId));
+      roomIds.map(async (roomId) => {
+        const data = await client.hGetAll(RedisKeys.timer(roomId));
 
         if (!data || Object.keys(data).length === 0) {
           return {
-            roomId: timer.roomId,
+            roomId,
             round: 0,
             timeLeft: 0,
-            scheduledAt: timer.timestamp,
+            scheduledAt: now,
           };
         }
 
         return {
-          roomId: data.roomId,
+          roomId: data.roomId || roomId,
           round: Number.parseInt(data.round, 10) || 0,
           timeLeft: Number.parseInt(data.timeLeft, 10) || 0,
-          scheduledAt: Number.parseInt(data.scheduledAt, 10) || timer.timestamp,
+          scheduledAt: Number.parseInt(data.scheduledAt, 10) || now,
         };
       }),
     );
+    const hydrateMs = performance.now() - hydrateStartedAt;
+
+    if (mode !== 'profile') {
+      return {
+        timers: timerSnapshots,
+      };
+    }
 
     return {
       timers: timerSnapshots,
-      queryMicros: parsed.queryMicros,
-      deleteMicros: parsed.deleteMicros,
+      profileMetrics: {
+        luaEvalMs: !Array.isArray(discovered)
+          ? (discovered.profileMetrics?.luaEvalMs ?? 0)
+          : 0,
+        luaQueryMs: !Array.isArray(discovered)
+          ? (discovered.profileMetrics?.luaQueryMs ?? 0)
+          : 0,
+        luaDeleteMs: !Array.isArray(discovered)
+          ? (discovered.profileMetrics?.luaDeleteMs ?? 0)
+          : 0,
+        hydrateMs,
+      },
     };
   }
 

@@ -19,11 +19,14 @@ function createBenchmarkConfig(overrides = {}) {
     overrides.target ?? process.env.TARGET ?? "http://127.0.0.1:3000";
   const redisUrl =
     overrides.redisUrl ?? process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
+  const benchmarkMode =
+    overrides.benchmarkMode ?? process.env.BENCHMARK_MODE ?? "improved";
 
   return {
     runId,
     target,
     redisUrl,
+    benchmarkMode,
     duration: getInt(overrides.duration ?? process.env.DURATION, 2),
     arrivalRate: getInt(overrides.arrivalRate ?? process.env.ARRIVAL_RATE, 1),
     roomCount: getInt(overrides.roomCount ?? process.env.ROOM_COUNT, 1),
@@ -54,6 +57,8 @@ function createBenchmarkConfig(overrides = {}) {
     ),
     timerEmitKey: `test:${runId}:timer:events`,
     timerTickKey: `test:${runId}:timer:ticks`,
+    timerProfileKey: `test:${runId}:timer:profile`,
+    timerProfileWriteBackKey: `test:${runId}:timer:profile:writeback`,
     roomKey: `test:${runId}:rooms`,
     counterKey: `test:${runId}:counter`,
   };
@@ -83,6 +88,8 @@ function createBenchmarkRuntime(overrides = {}) {
       config.counterKey,
       config.timerEmitKey,
       config.timerTickKey,
+      config.timerProfileKey,
+      config.timerProfileWriteBackKey,
     ]);
     await client.set(config.counterKey, "0");
   }
@@ -219,6 +226,7 @@ function createBenchmarkRuntime(overrides = {}) {
           nickname: state.nickname,
           playerNumber: state.playerNumber,
           benchmarkVariant: config.benchmarkVariant,
+          benchmarkMode: config.benchmarkMode,
         });
       }
     });

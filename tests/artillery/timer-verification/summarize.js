@@ -246,6 +246,50 @@ function buildCadenceSummary(events) {
   };
 }
 
+function buildCommonTickSummary(ticks) {
+  const scan = ticks.map((tick) =>
+    toNumber(tick.scanMs ?? tick.dueTimerQueryMs),
+  );
+  const decrement = ticks.map((tick) => toNumber(tick.decrementMs));
+  const unlink = ticks.map((tick) => toNumber(tick.unlinkMs));
+  const totalTick = ticks.map((tick) => toNumber(tick.totalTickMs));
+  const throughput = ticks.map((tick) => toNumber(tick.timersProcessed));
+  const cpuUsage = ticks.map((tick) => toNumber(tick.cpuTotalMs));
+  const eventLoopDelay = ticks
+    .map((tick) => toNumber(tick.eventLoopDelayMs))
+    .filter((value) => Number.isFinite(value));
+
+  return {
+    scan: summarize(scan),
+    decrement: summarize(decrement),
+    unlink: summarize(unlink),
+    totalTick: summarize(totalTick),
+    throughput: summarize(throughput),
+    cpuUsage: summarize(cpuUsage),
+    eventLoopDelay: summarize(eventLoopDelay),
+  };
+}
+
+function buildProfileSummary(profileTicks, profileWriteBacks) {
+  if (!profileTicks.length && !profileWriteBacks.length) {
+    return null;
+  }
+
+  const luaEval = profileTicks.map((tick) => toNumber(tick.luaEvalMs));
+  const luaQuery = profileTicks.map((tick) => toNumber(tick.luaQueryMs));
+  const luaDelete = profileTicks.map((tick) => toNumber(tick.luaDeleteMs));
+  const hydrate = profileTicks.map((tick) => toNumber(tick.hydrateMs));
+  const writeBack = profileWriteBacks.map((value) => toNumber(value));
+
+  return {
+    luaEval: summarize(luaEval),
+    luaQuery: summarize(luaQuery),
+    luaDelete: summarize(luaDelete),
+    hydrate: summarize(hydrate),
+    writeBack: summarize(writeBack),
+  };
+}
+
 function buildRunSummary({
   runId,
   label,
@@ -253,6 +297,8 @@ function buildRunSummary({
   playerPerRoom,
   events,
   ticks,
+  profileTicks = [],
+  profileWriteBacks = [],
 }) {
   const receivedLatency = events.map((event) =>
     Math.max(0, toNumber(event.receivedAt) - toNumber(event.serverSentAt)),
@@ -262,36 +308,24 @@ function buildRunSummary({
     Math.max(0, toNumber(event.processedAt) - toNumber(event.scheduledAt)),
   );
 
-  const dueTimerQuery = ticks.map((tick) => toNumber(tick.dueTimerQueryMs));
-  const queryDelete = ticks.map((tick) => toNumber(tick.queryDeleteMs));
-  const decrement = ticks.map((tick) => toNumber(tick.decrementMs));
-  const reschedule = ticks.map((tick) => toNumber(tick.rescheduleMs));
-  const totalTick = ticks.map((tick) => toNumber(tick.totalTickMs));
-  const throughput = ticks.map((tick) => toNumber(tick.timersProcessed));
-  const cpuUsage = ticks.map((tick) => toNumber(tick.cpuTotalMs));
-  const eventLoopDelay = ticks
-    .map((tick) => toNumber(tick.eventLoopDelayMs))
-    .filter((value) => Number.isFinite(value));
+  const common = buildCommonTickSummary(ticks);
+  const profile = buildProfileSummary(profileTicks, profileWriteBacks);
 
   return {
     runId,
     label,
     roomCount,
     playerPerRoom,
+    benchmarkMode:
+      ticks[0]?.benchmarkMode ?? profileTicks[0]?.benchmarkMode ?? null,
     eventCount: events.length,
     tickCount: ticks.length,
     cadence: buildCadenceSummary(events),
     metrics: {
       receivedLatency: summarize(receivedLatency),
       processedLatency: summarize(processedLatency),
-      dueTimerQuery: summarize(dueTimerQuery),
-      queryDelete: summarize(queryDelete),
-      decrement: summarize(decrement),
-      reschedule: summarize(reschedule),
-      totalTick: summarize(totalTick),
-      throughput: summarize(throughput),
-      cpuUsage: summarize(cpuUsage),
-      eventLoopDelay: summarize(eventLoopDelay),
+      common,
+      profile,
     },
   };
 }
@@ -321,45 +355,44 @@ function renderRunSection(summary) {
 
   const timerRows = [
     {
-      label: "due timer query time",
-      summary: summary.metrics.dueTimerQuery,
-    },
-    {
-      label: "query + delete time",
-      summary: summary.metrics.queryDelete,
+      label: "scan time",
+      summary: summary.metrics.common.scan,
     },
     {
       label: "decrement time",
-      summary: summary.metrics.decrement,
+      summary: summary.metrics.common.decrement,
     },
     {
-      label: "reschedule time",
-      summary: summary.metrics.reschedule,
+      label: "unlink time",
+      summary: summary.metrics.common.unlink,
     },
     {
       label: "tick processing time",
-      summary: summary.metrics.totalTick,
+      summary: summary.metrics.common.totalTick,
     },
     {
       label: "tick throughput",
-      summary: summary.metrics.throughput,
+      summary: summary.metrics.common.throughput,
     },
     {
       label: "CPU usage",
-      summary: summary.metrics.cpuUsage,
+      summary: summary.metrics.common.cpuUsage,
     },
     {
       label: "Event Loop Delay",
-      summary: summary.metrics.eventLoopDelay,
+      summary: summary.metrics.common.eventLoopDelay,
     },
   ];
 
-  return [
+  const sections = [
     `## ${summary.label ?? summary.runId}`,
     "",
     `- run id: \`${summary.runId}\``,
     `- rooms: ${summary.roomCount}`,
     `- players per room: ${summary.playerPerRoom}`,
+    summary.benchmarkMode
+      ? `- benchmark mode: \`${summary.benchmarkMode}\``
+      : null,
     `- raw receipts: ${summary.eventCount}`,
     `- unique timer updates: ${summary.cadence.updateCount}`,
     `- room-rounds: ${summary.cadence.roomRoundCount}`,
@@ -380,11 +413,36 @@ function renderRunSection(summary) {
     renderMetricTable("Cadence", cadenceRows),
     renderMetricTable("Latency", latencyRows),
     renderMetricTable("Timer Tick Cost", timerRows),
-  ].join("\n");
+  ].filter(Boolean);
+
+  if (summary.metrics.profile) {
+    sections.push(
+      renderMetricTable("Profiling", [
+        { label: "Lua eval time", summary: summary.metrics.profile.luaEval },
+        { label: "Lua query time", summary: summary.metrics.profile.luaQuery },
+        {
+          label: "Lua delete time",
+          summary: summary.metrics.profile.luaDelete,
+        },
+        { label: "Hydrate time", summary: summary.metrics.profile.hydrate },
+        {
+          label: "Profile write-back time",
+          summary: summary.metrics.profile.writeBack,
+        },
+      ]),
+    );
+  }
+
+  return sections.join("\n");
 }
 
 function renderComparison(primary, secondary) {
   const rows = [
+    [
+      "scan time avg",
+      primary.metrics.common.scan.avg,
+      secondary.metrics.common.scan.avg,
+    ],
     [
       "update interval avg",
       primary.cadence.updateIntervalSummary.avg,
@@ -399,6 +457,16 @@ function renderComparison(primary, secondary) {
       "timeLeft decrement avg",
       primary.cadence.decrementDeltaSummary.avg,
       secondary.cadence.decrementDeltaSummary.avg,
+    ],
+    [
+      "decrement time avg",
+      primary.metrics.common.decrement.avg,
+      secondary.metrics.common.decrement.avg,
+    ],
+    [
+      "unlink time avg",
+      primary.metrics.common.unlink.avg,
+      secondary.metrics.common.unlink.avg,
     ],
     [
       "sub-second update ratio",
@@ -428,18 +496,23 @@ function renderComparison(primary, secondary) {
     ],
     [
       "tick processing time avg",
-      primary.metrics.totalTick.avg,
-      secondary.metrics.totalTick.avg,
+      primary.metrics.common.totalTick.avg,
+      secondary.metrics.common.totalTick.avg,
+    ],
+    [
+      "tick throughput avg",
+      primary.metrics.common.throughput.avg,
+      secondary.metrics.common.throughput.avg,
     ],
     [
       "CPU usage avg",
-      primary.metrics.cpuUsage.avg,
-      secondary.metrics.cpuUsage.avg,
+      primary.metrics.common.cpuUsage.avg,
+      secondary.metrics.common.cpuUsage.avg,
     ],
     [
       "Event Loop Delay avg",
-      primary.metrics.eventLoopDelay.avg,
-      secondary.metrics.eventLoopDelay.avg,
+      primary.metrics.common.eventLoopDelay.avg,
+      secondary.metrics.common.eventLoopDelay.avg,
     ],
   ];
 
@@ -465,9 +538,13 @@ function renderComparison(primary, secondary) {
 async function loadRun(client, runId, label, roomCount, playerPerRoom) {
   const eventKey = `test:${runId}:timer:events`;
   const tickKey = `test:${runId}:timer:ticks`;
-  const [events, ticks] = await Promise.all([
+  const profileKey = `test:${runId}:timer:profile`;
+  const profileWriteBackKey = `test:${runId}:timer:profile:writeback`;
+  const [events, ticks, profileTicks, profileWriteBacks] = await Promise.all([
     readJsonList(client, eventKey),
     readJsonList(client, tickKey),
+    readJsonList(client, profileKey),
+    readJsonList(client, profileWriteBackKey),
   ]);
 
   return buildRunSummary({
@@ -477,6 +554,8 @@ async function loadRun(client, runId, label, roomCount, playerPerRoom) {
     playerPerRoom,
     events,
     ticks,
+    profileTicks,
+    profileWriteBacks,
   });
 }
 
@@ -544,6 +623,8 @@ async function main() {
         compareRunId,
         roomCount,
         playerPerRoom,
+        primaryBenchmarkMode: primary.benchmarkMode,
+        compareBenchmarkMode: comparison?.benchmarkMode ?? null,
       },
       primary,
       comparison,

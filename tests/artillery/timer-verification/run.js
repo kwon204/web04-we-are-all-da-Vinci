@@ -7,8 +7,6 @@ const dotenv = require("dotenv");
 function parseArgs(argv) {
   const args = {};
 
-  console.log(argv);
-
   for (let i = 0; i < argv.length; i += 1) {
     const current = argv[i];
     if (!current.startsWith("--")) {
@@ -85,6 +83,7 @@ async function main() {
     runId: args["run-id"] ?? process.env.RUN_ID,
     timerBenchmarkRunId:
       args["timer-benchmark-run-id"] ?? process.env.TIMER_BENCHMARK_RUN_ID,
+    benchmarkMode: args["benchmark-mode"] ?? process.env.BENCHMARK_MODE,
     benchmarkVariant:
       args["benchmark-variant"] ?? process.env.BENCHMARK_VARIANT,
     target: args.target ?? process.env.TARGET,
@@ -123,6 +122,7 @@ async function main() {
     JSON.stringify(
       {
         runId: config.runId,
+        benchmarkMode: config.benchmarkMode,
         benchmarkVariant: config.benchmarkVariant,
         target: config.target,
         redisUrl: config.redisUrl,
