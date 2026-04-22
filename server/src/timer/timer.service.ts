@@ -2,12 +2,10 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import os from 'node:os';
-import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
 import {
   TimerCacheService,
   TimerSnapshot,
 } from 'src/redis/cache/timer-cache.service';
-import { RedisService } from 'src/redis/redis.service';
 import type { RoomTimerDto } from '@shared/types';
 
 @Injectable()
@@ -16,18 +14,10 @@ export class TimerService implements OnModuleInit, OnModuleDestroy {
   private onTimerTickCallback?: (payload: RoomTimerDto) => void;
   private onTimerEndCallback?: (roomId: string) => Promise<void>;
   private readonly serverInstanceId: string;
-  private readonly benchmarkMode: 'baseline' | 'improved';
-  private readonly benchmarkRunId?: string;
-  private readonly benchmarkEventKey?: string;
-  private readonly eventLoopDelayMonitor?: ReturnType<
-    typeof monitorEventLoopDelay
-  >;
-  private lastCpuUsage = process.cpuUsage();
 
   constructor(
     private readonly configService: ConfigService,
     private readonly timerCacheService: TimerCacheService,
-    private readonly redisService: RedisService,
     private readonly logger: PinoLogger,
   ) {
     this.logger.setContext(TimerService.name);
@@ -36,20 +26,6 @@ export class TimerService implements OnModuleInit, OnModuleDestroy {
       this.configService.get<string>('SERVER_INSTANCE_ID') ??
       this.configService.get<string>('TIMER_SERVER_ID') ??
       `${os.hostname()}:${process.pid}`;
-
-    this.benchmarkMode = this.normalizeBenchmarkMode(
-      this.configService.get<string>('BENCHMARK_MODE'),
-    );
-
-    this.benchmarkRunId = this.configService.get<string>(
-      'TIMER_BENCHMARK_RUN_ID',
-    );
-
-    if (this.benchmarkRunId) {
-      this.benchmarkEventKey = `test:${this.benchmarkRunId}:timer:ticks`;
-      this.eventLoopDelayMonitor = monitorEventLoopDelay({ resolution: 20 });
-      this.eventLoopDelayMonitor.enable();
-    }
   }
 
   onModuleInit() {
@@ -59,10 +35,6 @@ export class TimerService implements OnModuleInit, OnModuleDestroy {
   onModuleDestroy() {
     if (this.globalIntervalId) {
       clearInterval(this.globalIntervalId);
-    }
-
-    if (this.eventLoopDelayMonitor) {
-      this.eventLoopDelayMonitor.disable();
     }
   }
 
@@ -84,38 +56,24 @@ export class TimerService implements OnModuleInit, OnModuleDestroy {
   }
 
   async tick() {
-    const tickStartedAt = performance.now();
-    const cpuUsageBeforeTick = this.lastCpuUsage;
-    const scanStartedAt = performance.now();
     const expiredTimerBatch = await this.timerCacheService.popExpiredTimers();
-    const scanMs = performance.now() - scanStartedAt;
-
-    let decrementMs = 0;
-    let unlinkMs = 0;
-    let rescheduleMs = 0;
 
     for (const timer of expiredTimerBatch.timers) {
-      const decrementStartedAt = performance.now();
       const timeLeft = await this.timerCacheService.decrementTimer(
         timer.roomId,
       );
-      decrementMs += performance.now() - decrementStartedAt;
 
       if (timeLeft === null) {
-        const unlinkStartedAt = performance.now();
         await this.timerCacheService.deleteTimer(timer.roomId);
-        unlinkMs += performance.now() - unlinkStartedAt;
         continue;
       }
 
       if (timeLeft > 0) {
-        const rescheduleStartedAt = performance.now();
         await this.timerCacheService.scheduleTimer(
           timer.roomId,
           timer.round,
           timer.scheduledAt + 1000,
         );
-        rescheduleMs += performance.now() - rescheduleStartedAt;
       }
 
       const processedAt = Date.now();
@@ -134,37 +92,9 @@ export class TimerService implements OnModuleInit, OnModuleDestroy {
             { roomId: timer.roomId, err },
             'Timer end callback failed. Remove Timer',
           );
-          const unlinkStartedAt = performance.now();
           await this.timerCacheService.deleteTimer(timer.roomId);
-          unlinkMs += performance.now() - unlinkStartedAt;
         }
       }
-    }
-
-    const tickEndedAt = performance.now();
-    const cpuUsage = process.cpuUsage(cpuUsageBeforeTick);
-    this.lastCpuUsage = process.cpuUsage();
-
-    const commonSample = {
-      benchmarkMode: this.benchmarkMode,
-      tickStartedAt,
-      tickEndedAt,
-      scanMs,
-      decrementMs,
-      unlinkMs,
-      rescheduleMs,
-      timersProcessed: expiredTimerBatch.timers.length,
-      cpuUserMs: cpuUsage.user / 1000,
-      cpuSystemMs: cpuUsage.system / 1000,
-      eventLoopDelayMs: this.eventLoopDelayMonitor
-        ? this.eventLoopDelayMonitor.max / 1_000_000
-        : null,
-    };
-
-    await this.recordBenchmarkTick(commonSample);
-
-    if (this.eventLoopDelayMonitor) {
-      this.eventLoopDelayMonitor.reset();
     }
   }
 
@@ -210,50 +140,5 @@ export class TimerService implements OnModuleInit, OnModuleDestroy {
       serverSentAt: processedAt,
       processedByServerId: this.serverInstanceId,
     };
-  }
-
-  private normalizeBenchmarkMode(
-    value?: string | null,
-  ): 'baseline' | 'improved' {
-    const normalized = value?.toLowerCase();
-    if (normalized === 'baseline' || normalized === 'improved') {
-      return normalized;
-    }
-
-    return 'improved';
-  }
-
-  private async recordBenchmarkTick(sample: {
-    benchmarkMode: 'baseline' | 'improved';
-    tickStartedAt: number;
-    tickEndedAt: number;
-    scanMs: number;
-    decrementMs: number;
-    unlinkMs: number;
-    rescheduleMs: number;
-    timersProcessed: number;
-    cpuUserMs: number;
-    cpuSystemMs: number;
-    eventLoopDelayMs: number | null;
-  }) {
-    if (!this.benchmarkEventKey) {
-      return;
-    }
-
-    try {
-      const client = this.redisService.getClient();
-      await client.rPush(
-        this.benchmarkEventKey,
-        JSON.stringify({
-          ...sample,
-          totalTickMs: sample.tickEndedAt - sample.tickStartedAt,
-          cpuTotalMs: sample.cpuUserMs + sample.cpuSystemMs,
-          serverInstanceId: this.serverInstanceId,
-          capturedAt: Date.now(),
-        }),
-      );
-    } catch (error) {
-      this.logger.warn({ error }, 'Failed to write timer benchmark sample');
-    }
   }
 }

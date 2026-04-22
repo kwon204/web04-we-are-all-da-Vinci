@@ -16,6 +16,8 @@
     "test:e2e:headed": "playwright test --headed",
     "perf:single": "DEBUG=socketio artillery run ./tests/artillery/single-room/load.test.yml --env-file=./tests/artillery/single-room/.env --output=./tests/artillery/single-room/output.json",
     "perf:multi": "DEBUG=socketio artillery run ./tests/artillery/multi-room/load.test.yml --env-file=./tests/artillery/multi-room/.env --output=./tests/artillery/multi-room/output.json",
+    "perf:game-load": "node ./tests/artillery/game-load/run.js --env-file ./tests/artillery/game-load/.env.example",
+    "perf:game-load:summary": "node ./tests/artillery/game-load/summarize.js",
     "perf:timer:baseline": "node ./tests/artillery/timer-verification/run.js --env-file ./tests/artillery/timer-verification/.env.baseline.example",
     "perf:timer:improved": "node ./tests/artillery/timer-verification/run.js --env-file ./tests/artillery/timer-verification/.env.improved.example",
     "perf:timer:summary": "node ./tests/artillery/timer-verification/summarize.js"
