@@ -47,6 +47,7 @@ import { LifecycleService } from 'src/lifecycle/lifecycle.service';
 import { Interval, SchedulerRegistry } from '@nestjs/schedule';
 import { PlayerCacheService } from 'src/redis/cache/player-cache.service';
 import { TimerService } from 'src/timer/timer.service';
+import { InternalError } from 'src/common/exceptions/internal-error';
 
 interface PhaseChangedEvent {
   roomId: string;
@@ -199,14 +200,6 @@ export class GameGateway
           'Player in grace period, waiting for reconnect',
         );
 
-        // 2.5초 후 cleanup 스케줄링 (Grace Period TTL 2초 + 여유 0.5초)
-        await this.scheduleGracePeriodCleanup(
-          room.roomId,
-          leaveResult.player.profileId,
-          leaveResult.player.nickname,
-          client.id, // oldSocketId: 복구 확인용
-        );
-
         // 메타데이터만 브로드캐스트 (플레이어 목록 갱신)
         this.broadcastMetadata(room);
         return;
@@ -289,9 +282,6 @@ export class GameGateway
 
         // 방 상태 확인
         const room = await this.roomService.getRoom(roomId);
-        if (!room) {
-          continue;
-        }
 
         // 빈 방이면 삭제
         if (room.players.length === 0) {
@@ -318,6 +308,7 @@ export class GameGateway
         this.broadcastMetadata(room);
       } catch (err) {
         // popUntil 호출 시 이미 큐에서 제거되므로 실패 항목은 재등록한다.
+        if (err instanceof InternalError) continue;
         try {
           await this.gracePeriodCache.set(
             roomId,
