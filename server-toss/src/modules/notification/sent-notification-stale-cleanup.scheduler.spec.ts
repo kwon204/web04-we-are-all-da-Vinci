@@ -22,9 +22,7 @@ const buildScheduler = (opts?: {
       : jest.fn().mockResolvedValue(opts?.affected ?? 0),
   } as unknown as jest.Mocked<NotificationService>;
 
-  // run() 직접 호출이라 handleCleanup의 RequestContext.create는 타지 않음 → em 빈 mock.
   const scheduler = new SentNotificationStaleCleanupScheduler(
-    {} as never,
     configService,
     notificationService,
   );
@@ -106,11 +104,11 @@ describe("IN_FLIGHT 정리 스케줄러", () => {
     );
   });
 
-  it("repository가 throw해도 cron 다음 차수 영향 없이 swallow해요", async () => {
+  it("repository가 throw하면 오류를 전파해 재시도할 수 있어요", async () => {
     const { scheduler } = buildScheduler({
       serviceError: new Error("DB 장애"),
     });
 
-    await expect(scheduler.run()).resolves.toBe(undefined);
+    await expect(scheduler.run()).rejects.toThrow("DB 장애");
   });
 });

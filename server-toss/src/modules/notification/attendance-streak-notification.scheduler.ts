@@ -1,9 +1,6 @@
-import { EntityManager } from "@mikro-orm/core";
-import { CreateRequestContext } from "@mikro-orm/decorators/legacy";
 import { InjectRepository } from "@mikro-orm/nestjs";
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { Cron } from "@nestjs/schedule";
 import { getSeoulDateKey, getSeoulDayRange } from "src/common/util/time.util";
 import { AttendanceService } from "../attendance/attendance.service";
 import { NotificationAgreement } from "./notification-agreement.entity";
@@ -14,14 +11,6 @@ import {
 } from "./notification.constants";
 import { NotificationService } from "./notification.service";
 
-// 연속 출석 중단 알림 발송 시각(KST). 로컬 검증용으로 .env.local에서
-// ATTENDANCE_STREAK_CRON 환경변수로 식을 오버라이드할 수 있다 (예: "* * * * *").
-// 데코레이터는 클래스 로드 시점에 평가되므로 NestJS 부팅 전에 dotenv가
-// 환경변수를 채우는 흐름을 신뢰한다.
-const DEFAULT_ATTENDANCE_STREAK_CRON = "30 20 * * *"; // KST 20:30
-const ATTENDANCE_STREAK_CRON =
-  process.env.ATTENDANCE_STREAK_CRON ?? DEFAULT_ATTENDANCE_STREAK_CRON;
-
 @Injectable()
 export class AttendanceStreakNotificationScheduler {
   private readonly logger = new Logger(
@@ -29,7 +18,6 @@ export class AttendanceStreakNotificationScheduler {
   );
 
   constructor(
-    private readonly em: EntityManager,
     private readonly configService: ConfigService,
     private readonly notificationService: NotificationService,
     @InjectRepository(NotificationAgreement)
@@ -37,15 +25,6 @@ export class AttendanceStreakNotificationScheduler {
     private readonly attendanceService: AttendanceService,
   ) {}
 
-  @CreateRequestContext(
-    (self: AttendanceStreakNotificationScheduler) => self.em,
-  )
-  @Cron(ATTENDANCE_STREAK_CRON, { timeZone: "Asia/Seoul" })
-  async handleAttendanceStreakBroadcast(): Promise<void> {
-    await this.run();
-  }
-
-  /** 테스트에서 직접 호출하기 위한 진입점 */
   async run(): Promise<void> {
     if (
       this.configService.get<string>(
@@ -81,7 +60,7 @@ export class AttendanceStreakNotificationScheduler {
         },
         "발송 대상 조회에 실패했어요.",
       );
-      return;
+      throw err;
     }
 
     if (userKeys.length === 0) {
@@ -114,7 +93,7 @@ export class AttendanceStreakNotificationScheduler {
         },
         "동의자 조회에 실패했어요.",
       );
-      return;
+      throw err;
     }
 
     if (agreedUserKeys.length === 0) {
@@ -160,6 +139,7 @@ export class AttendanceStreakNotificationScheduler {
           },
           "연속 출석 중단 알림 대량 발송 준비에 실패했어요.",
         );
+        throw err;
       }
       return;
     }

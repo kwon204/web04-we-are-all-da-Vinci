@@ -141,7 +141,6 @@ const buildFlow = (opts: {
     getPromptByDate: jest.fn().mockResolvedValue({ promptId: 1, strokes: [] }),
   } as unknown as jest.Mocked<PromptService>;
   const scheduler = new DailyPromptNotificationScheduler(
-    {} as never,
     configService,
     notificationService,
     sentNotificationRepository,

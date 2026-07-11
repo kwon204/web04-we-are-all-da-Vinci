@@ -62,10 +62,7 @@ const buildScheduler = (opts: {
     }),
   } as unknown as jest.Mocked<AttendanceService>;
 
-  // run()을 직접 호출하는 테스트라 handleAttendanceStreakBroadcast의
-  // RequestContext.create는 타지 않는다 → em은 빈 mock으로 충분하다.
   const scheduler = new AttendanceStreakNotificationScheduler(
-    {} as never,
     configService,
     notificationService,
     notificationAgreementRepository,
@@ -196,23 +193,34 @@ describe("연속 출석 중단 알림 스케줄러", () => {
     expect(notificationService.send).toHaveBeenCalledTimes(3);
   });
 
-  it("대상 조회가 throw하면 발송이 일어나지 않는다", async () => {
+  it("대상 조회가 throw하면 오류를 전파하고 발송이 일어나지 않는다", async () => {
     const { scheduler, notificationService } = buildScheduler({
       targetUserKeys: () => Promise.reject(new Error("db down")),
     });
 
-    await expect(scheduler.run()).resolves.toBeUndefined();
+    await expect(scheduler.run()).rejects.toThrow("db down");
     expect(notificationService.send).not.toHaveBeenCalled();
   });
 
-  it("동의자 조회가 throw하면 발송이 일어나지 않는다", async () => {
+  it("동의자 조회가 throw하면 오류를 전파하고 발송이 일어나지 않는다", async () => {
     const { scheduler, notificationService } = buildScheduler({
       targetUserKeys: [101],
       agreedUserKeys: () => Promise.reject(new Error("db down")),
     });
 
-    await expect(scheduler.run()).resolves.toBeUndefined();
+    await expect(scheduler.run()).rejects.toThrow("db down");
     expect(notificationService.send).not.toHaveBeenCalled();
+  });
+
+  it("대량 발송이 throw하면 오류를 전파한다", async () => {
+    const agreedUserKeys = Array.from({ length: 50 }, (_, index) => index + 1);
+    const { scheduler } = buildScheduler({
+      targetUserKeys: agreedUserKeys,
+      agreedUserKeys,
+      sendBulkImpl: jest.fn().mockRejectedValue(new Error("bulk failed")),
+    });
+
+    await expect(scheduler.run()).rejects.toThrow("bulk failed");
   });
 
   it("UTC 자정 KST 새벽 케이스에서도 KST 날짜를 referenceId로 쓴다", async () => {

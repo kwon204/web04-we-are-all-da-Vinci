@@ -53,6 +53,14 @@ export const validateChanceWhitelistEnv = (
     "SHARE_MODULE_ID_WHITELIST",
     config.SHARE_MODULE_ID_WHITELIST,
   );
+  validateNonEmpty(
+    "INTERNAL_JOB_BASIC_AUTH_USERNAME",
+    config.INTERNAL_JOB_BASIC_AUTH_USERNAME,
+  );
+  validateNonEmpty(
+    "INTERNAL_JOB_BASIC_AUTH_PASSWORD",
+    config.INTERNAL_JOB_BASIC_AUTH_PASSWORD,
+  );
   validateOptionalBoolean(
     "DAILY_PROMPT_NOTIFICATION_ENABLED",
     config.DAILY_PROMPT_NOTIFICATION_ENABLED,

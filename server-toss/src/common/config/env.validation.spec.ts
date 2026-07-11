@@ -1,9 +1,23 @@
-import { validateChanceWhitelistEnv } from "./env.validation";
+import { validateChanceWhitelistEnv as validateEnv } from "./env.validation";
+
+const validateChanceWhitelistEnv = (config: Record<string, unknown>) =>
+  validateEnv(
+    config.INTERNAL_JOB_BASIC_AUTH_USERNAME !== undefined &&
+      config.INTERNAL_JOB_BASIC_AUTH_PASSWORD !== undefined
+      ? config
+      : {
+          INTERNAL_JOB_BASIC_AUTH_USERNAME: "internal-job",
+          INTERNAL_JOB_BASIC_AUTH_PASSWORD: "secret",
+          ...config,
+        },
+  );
 
 describe("validateChanceWhitelistEnv", () => {
   const validEnv: Record<string, unknown> = {
     AD_GROUP_ID_WHITELIST: "ad-group-1,ad-group-2",
     SHARE_MODULE_ID_WHITELIST: "module-1,module-2",
+    INTERNAL_JOB_BASIC_AUTH_USERNAME: "internal-job",
+    INTERNAL_JOB_BASIC_AUTH_PASSWORD: "secret",
     TOSS_TEMPLATE_DAILY_PROMPT: "daily_prompt_v1",
   };
 
@@ -13,7 +27,7 @@ describe("validateChanceWhitelistEnv", () => {
 
   it("AD_GROUP_ID_WHITELIST 누락 시 실패한다", () => {
     expect(() =>
-      validateChanceWhitelistEnv({
+      validateEnv({
         SHARE_MODULE_ID_WHITELIST: "module-1",
       }),
     ).toThrow("환경변수 검증 실패");
@@ -25,6 +39,16 @@ describe("validateChanceWhitelistEnv", () => {
         AD_GROUP_ID_WHITELIST: "ad-group-1",
       }),
     ).toThrow("환경변수 검증 실패");
+  });
+
+  it("내부 작업 Basic Auth 자격증명이 누락되면 실패한다", () => {
+    expect(() =>
+      validateEnv({
+        AD_GROUP_ID_WHITELIST: "ad-group-1",
+        SHARE_MODULE_ID_WHITELIST: "module-1",
+        INTERNAL_JOB_BASIC_AUTH_PASSWORD: "secret",
+      }),
+    ).toThrow("INTERNAL_JOB_BASIC_AUTH_USERNAME");
   });
 
   it("발송 플래그가 꺼져 있으면 TOSS_TEMPLATE_DAILY_PROMPT가 없어도 통과한다", () => {

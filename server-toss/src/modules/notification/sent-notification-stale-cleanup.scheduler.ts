@@ -1,13 +1,6 @@
-import { EntityManager } from "@mikro-orm/core";
-import { CreateRequestContext } from "@mikro-orm/decorators/legacy";
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { Cron } from "@nestjs/schedule";
 import { NotificationService } from "./notification.service";
-
-// 매 시간 정각(KST). 환경변수 NOTIFICATION_STALE_CLEANUP_CRON으로 오버라이드 가능.
-const STALE_CLEANUP_CRON =
-  process.env.NOTIFICATION_STALE_CLEANUP_CRON ?? "0 * * * *";
 
 const DEFAULT_THRESHOLD_MINUTES = 60;
 
@@ -22,20 +15,10 @@ export class SentNotificationStaleCleanupScheduler {
   );
 
   constructor(
-    private readonly em: EntityManager,
     private readonly configService: ConfigService,
     private readonly notificationService: NotificationService,
   ) {}
 
-  @CreateRequestContext(
-    (self: SentNotificationStaleCleanupScheduler) => self.em,
-  )
-  @Cron(STALE_CLEANUP_CRON, { timeZone: "Asia/Seoul" })
-  async handleCleanup(): Promise<void> {
-    await this.run();
-  }
-
-  /** 테스트에서 직접 호출하기 위한 진입점 */
   async run(): Promise<void> {
     const thresholdMinutes = this.resolveThresholdMinutes();
     const staleBefore = new Date(Date.now() - thresholdMinutes * 60 * 1000);
@@ -74,6 +57,7 @@ export class SentNotificationStaleCleanupScheduler {
         },
         "IN_FLIGHT 잔존 row 정리 중 예외가 발생했어요.",
       );
+      throw err;
     }
   }
 

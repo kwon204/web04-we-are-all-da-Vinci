@@ -1,8 +1,5 @@
-import { EntityManager } from "@mikro-orm/core";
-import { CreateRequestContext } from "@mikro-orm/decorators/legacy";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { Cron } from "@nestjs/schedule";
 import { getTodayKst } from "src/common/util/today";
 import { getSeoulDateKey, getSeoulDayRange } from "src/common/util/time.util";
 import { PromptService } from "../prompt/prompt.service";
@@ -13,34 +10,17 @@ import {
 import { NotificationService } from "./notification.service";
 import { SentNotificationRepository } from "./sent-notification.repository";
 
-// 일일 제시 그림 알림 발송 시각(KST, 정각). 로컬 검증용으로 .env.local에서
-// DAILY_PROMPT_CRON 환경변수로 식을 오버라이드할 수 있다 (예: "* * * * *").
-// 데코레이터는 클래스 로드 시점에 평가되므로 NestJS 부팅 전에 dotenv가
-// 환경변수를 채우는 흐름을 신뢰한다.
-const DAILY_PROMPT_SEND_HOUR_KST = 20;
-const DEFAULT_DAILY_PROMPT_CRON = `0 ${DAILY_PROMPT_SEND_HOUR_KST} * * *`;
-const DAILY_PROMPT_CRON =
-  process.env.DAILY_PROMPT_CRON ?? DEFAULT_DAILY_PROMPT_CRON;
-
 @Injectable()
 export class DailyPromptNotificationScheduler {
   private readonly logger = new Logger(DailyPromptNotificationScheduler.name);
 
   constructor(
-    private readonly em: EntityManager,
     private readonly configService: ConfigService,
     private readonly notificationService: NotificationService,
     private readonly sentNotificationRepository: SentNotificationRepository,
     private readonly promptService: PromptService,
   ) {}
 
-  @CreateRequestContext((self: DailyPromptNotificationScheduler) => self.em)
-  @Cron(DAILY_PROMPT_CRON, { timeZone: "Asia/Seoul" })
-  async handleDailyPromptBroadcast(): Promise<void> {
-    await this.run();
-  }
-
-  /** 테스트에서 직접 호출하기 위한 진입점 */
   async run(): Promise<void> {
     if (
       this.configService.get<string>("DAILY_PROMPT_NOTIFICATION_ENABLED") !==
@@ -77,9 +57,9 @@ export class DailyPromptNotificationScheduler {
 
       this.logger.error(
         { event: "daily_prompt.scheduler.failed", reason: "prompt_check", err },
-        "오늘 제시 그림 확인에 실패해 발송 스킵해요.",
+        "오늘 제시 그림 확인에 실패했어요.",
       );
-      return;
+      throw err;
     }
 
     let userKeys: number[];
@@ -103,7 +83,7 @@ export class DailyPromptNotificationScheduler {
         },
         "발송 대상 조회에 실패했어요.",
       );
-      return;
+      throw err;
     }
 
     if (userKeys.length === 0) {
@@ -148,6 +128,7 @@ export class DailyPromptNotificationScheduler {
           },
           "오늘의 제시 그림 알림 대량 발송 준비에 실패했어요.",
         );
+        throw err;
       }
       return;
     }

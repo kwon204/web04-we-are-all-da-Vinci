@@ -4,6 +4,8 @@ import { AttendanceModule } from "../attendance/attendance.module";
 import { PromptModule } from "../prompt/prompt.module";
 import { AttendanceStreakNotificationScheduler } from "./attendance-streak-notification.scheduler";
 import { DailyPromptNotificationScheduler } from "./daily-prompt-notification.scheduler";
+import { InternalNotificationController } from "./internal-notification.controller";
+import { InternalNotificationBasicAuthGuard } from "./guards/internal-notification-basic-auth.guard";
 import { RankingChangedListener } from "./listeners/ranking-changed.listener";
 import { NotificationAgreement } from "./notification-agreement.entity";
 import { NotificationAgreementService } from "./notification-agreement.service";
@@ -18,13 +20,14 @@ import { SentNotificationStaleCleanupScheduler } from "./sent-notification-stale
     PromptModule,
     AttendanceModule,
   ],
-  controllers: [NotificationController],
+  controllers: [NotificationController, InternalNotificationController],
   providers: [
     NotificationService,
     NotificationAgreementService,
     DailyPromptNotificationScheduler,
     AttendanceStreakNotificationScheduler,
     SentNotificationStaleCleanupScheduler,
+    InternalNotificationBasicAuthGuard,
     RankingChangedListener,
   ],
   exports: [NotificationService, NotificationAgreementService],

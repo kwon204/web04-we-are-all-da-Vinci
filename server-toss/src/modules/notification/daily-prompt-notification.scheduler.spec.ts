@@ -75,10 +75,7 @@ const buildScheduler = (opts: {
       }) as unknown as jest.Mocked<PromptService>["getPromptByDate"]),
   } as unknown as jest.Mocked<PromptService>;
 
-  // run()을 직접 호출하는 테스트라 handleDailyPromptBroadcast의 RequestContext.create는
-  // 타지 않는다 → em은 사용되지 않으므로 빈 mock으로 충분하다.
   const scheduler = new DailyPromptNotificationScheduler(
-    {} as never,
     configService,
     notificationService,
     sentNotificationRepository,
@@ -215,13 +212,23 @@ describe("DailyPromptNotificationScheduler.run", () => {
     expect(notificationService.send).toHaveBeenCalledTimes(3);
   });
 
-  it("대상 조회가 throw하면 토스 호출이 일어나지 않는다", async () => {
+  it("대상 조회가 throw하면 오류를 전파하고 토스 호출이 일어나지 않는다", async () => {
     const { scheduler, notificationService } = buildScheduler({
       userKeys: () => Promise.reject(new Error("db down")),
     });
 
-    await expect(scheduler.run()).resolves.toBeUndefined();
+    await expect(scheduler.run()).rejects.toThrow("db down");
     expect(notificationService.send).not.toHaveBeenCalled();
+  });
+
+  it("대량 발송이 throw하면 오류를 전파한다", async () => {
+    const userKeys = Array.from({ length: 50 }, (_, index) => index + 1);
+    const { scheduler } = buildScheduler({
+      userKeys,
+      sendBulkImpl: jest.fn().mockRejectedValue(new Error("bulk failed")),
+    });
+
+    await expect(scheduler.run()).rejects.toThrow("bulk failed");
   });
 
   it("UTC 자정 KST 새벽 케이스에서도 KST 날짜를 referenceId로 쓴다", async () => {
