@@ -2,10 +2,10 @@ import { HttpStatus, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PATH_METADATA, HTTP_CODE_METADATA } from "@nestjs/common/constants";
 import type { ExecutionContext } from "@nestjs/common";
+import { InternalNotificationBasicAuthGuard } from "src/common/guards/internal-notification-basic-auth.guard";
 import { InternalNotificationController } from "./internal-notification.controller";
-import { InternalNotificationBasicAuthGuard } from "./guards/internal-notification-basic-auth.guard";
 
-describe("InternalNotificationController", () => {
+describe("내부 알림 작업 API", () => {
   const dailyPromptScheduler = { run: jest.fn() };
   const attendanceStreakScheduler = { run: jest.fn() };
   const staleCleanupScheduler = { run: jest.fn() };
