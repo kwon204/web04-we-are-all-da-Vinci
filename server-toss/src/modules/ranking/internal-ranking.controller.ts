@@ -6,12 +6,12 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { ApiExcludeController } from "@nestjs/swagger";
-import { InternalNotificationBasicAuthGuard } from "src/common/guards/internal-notification-basic-auth.guard";
+import { InternalSchedulerBasicAuthGuard } from "src/common/guards/internal-scheduler-basic-auth.guard";
 import { RankingCleanupScheduler } from "./ranking.cleanup.scheduler";
 
 @ApiExcludeController()
 @Controller("internal/rankings")
-@UseGuards(InternalNotificationBasicAuthGuard)
+@UseGuards(InternalSchedulerBasicAuthGuard)
 export class InternalRankingController {
   constructor(
     private readonly rankingCleanupScheduler: RankingCleanupScheduler,

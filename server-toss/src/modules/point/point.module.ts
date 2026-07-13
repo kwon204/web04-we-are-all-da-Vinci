@@ -1,6 +1,6 @@
 import { MikroOrmModule } from "@mikro-orm/nestjs";
 import { Module } from "@nestjs/common";
-import { InternalNotificationBasicAuthGuard } from "src/common/guards/internal-notification-basic-auth.guard";
+import { InternalSchedulerBasicAuthGuard } from "src/common/guards/internal-scheduler-basic-auth.guard";
 import { InternalPointController } from "./internal-point.controller";
 import { PointController } from "./point.controller";
 import { PointGrantRequest } from "./entity/point-grant-request.entity";
@@ -15,7 +15,7 @@ import { PointGrantScheduler } from "./scheduler/point-grant.scheduler";
     PointService,
     PointGrantScheduler,
     PointGrantPurgeScheduler,
-    InternalNotificationBasicAuthGuard,
+    InternalSchedulerBasicAuthGuard,
   ],
   exports: [PointService],
 })

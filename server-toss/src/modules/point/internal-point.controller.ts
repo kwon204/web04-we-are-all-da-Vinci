@@ -6,12 +6,12 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { ApiExcludeController } from "@nestjs/swagger";
-import { InternalNotificationBasicAuthGuard } from "src/common/guards/internal-notification-basic-auth.guard";
+import { InternalSchedulerBasicAuthGuard } from "src/common/guards/internal-scheduler-basic-auth.guard";
 import { PointGrantPurgeScheduler } from "./scheduler/point-grant-purge.scheduler";
 
 @ApiExcludeController()
 @Controller("internal/points")
-@UseGuards(InternalNotificationBasicAuthGuard)
+@UseGuards(InternalSchedulerBasicAuthGuard)
 export class InternalPointController {
   constructor(
     private readonly pointGrantPurgeScheduler: PointGrantPurgeScheduler,

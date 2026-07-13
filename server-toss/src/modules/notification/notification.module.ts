@@ -1,6 +1,6 @@
 import { MikroOrmModule } from "@mikro-orm/nestjs";
 import { Module } from "@nestjs/common";
-import { InternalNotificationBasicAuthGuard } from "src/common/guards/internal-notification-basic-auth.guard";
+import { InternalSchedulerBasicAuthGuard } from "src/common/guards/internal-scheduler-basic-auth.guard";
 import { AttendanceModule } from "../attendance/attendance.module";
 import { PromptModule } from "../prompt/prompt.module";
 import { AttendanceStreakNotificationScheduler } from "./attendance-streak-notification.scheduler";
@@ -27,7 +27,7 @@ import { SentNotificationStaleCleanupScheduler } from "./sent-notification-stale
     DailyPromptNotificationScheduler,
     AttendanceStreakNotificationScheduler,
     SentNotificationStaleCleanupScheduler,
-    InternalNotificationBasicAuthGuard,
+    InternalSchedulerBasicAuthGuard,
     RankingChangedListener,
   ],
   exports: [NotificationService, NotificationAgreementService],

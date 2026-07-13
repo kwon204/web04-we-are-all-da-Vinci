@@ -2,7 +2,7 @@ import { HttpStatus, UnauthorizedException } from "@nestjs/common";
 import { HTTP_CODE_METADATA, PATH_METADATA } from "@nestjs/common/constants";
 import { ConfigService } from "@nestjs/config";
 import type { ExecutionContext } from "@nestjs/common";
-import { InternalNotificationBasicAuthGuard } from "src/common/guards/internal-notification-basic-auth.guard";
+import { InternalSchedulerBasicAuthGuard } from "src/common/guards/internal-scheduler-basic-auth.guard";
 import { InternalRankingController } from "../internal-ranking.controller";
 
 describe("내부 랭킹 정리 API", () => {
@@ -10,7 +10,7 @@ describe("내부 랭킹 정리 API", () => {
   const controller = new InternalRankingController(
     rankingCleanupScheduler as never,
   );
-  const guard = new InternalNotificationBasicAuthGuard({
+  const guard = new InternalSchedulerBasicAuthGuard({
     getOrThrow: jest.fn((key: string) => {
       if (key === "INTERNAL_JOB_BASIC_AUTH_USERNAME") return "internal-job";
       if (key === "INTERNAL_JOB_BASIC_AUTH_PASSWORD") return "secret";

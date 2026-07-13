@@ -1,6 +1,6 @@
 import { MikroOrmModule } from "@mikro-orm/nestjs";
 import { Module } from "@nestjs/common";
-import { InternalNotificationBasicAuthGuard } from "src/common/guards/internal-notification-basic-auth.guard";
+import { InternalSchedulerBasicAuthGuard } from "src/common/guards/internal-scheduler-basic-auth.guard";
 import { Ranking } from "./ranking.entity";
 import { RankingController } from "./ranking.controller";
 import { InternalRankingController } from "./internal-ranking.controller";
@@ -15,7 +15,7 @@ import { Drawing } from "../drawing/drawing.entity";
   providers: [
     RankingService,
     RankingCleanupScheduler,
-    InternalNotificationBasicAuthGuard,
+    InternalSchedulerBasicAuthGuard,
   ],
   exports: [RankingService],
 })

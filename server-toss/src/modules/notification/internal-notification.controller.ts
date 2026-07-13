@@ -6,14 +6,14 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { ApiExcludeController } from "@nestjs/swagger";
-import { InternalNotificationBasicAuthGuard } from "src/common/guards/internal-notification-basic-auth.guard";
+import { InternalSchedulerBasicAuthGuard } from "src/common/guards/internal-scheduler-basic-auth.guard";
 import { AttendanceStreakNotificationScheduler } from "./attendance-streak-notification.scheduler";
 import { DailyPromptNotificationScheduler } from "./daily-prompt-notification.scheduler";
 import { SentNotificationStaleCleanupScheduler } from "./sent-notification-stale-cleanup.scheduler";
 
 @ApiExcludeController()
 @Controller("internal/notifications")
-@UseGuards(InternalNotificationBasicAuthGuard)
+@UseGuards(InternalSchedulerBasicAuthGuard)
 export class InternalNotificationController {
   constructor(
     private readonly dailyPromptNotificationScheduler: DailyPromptNotificationScheduler,

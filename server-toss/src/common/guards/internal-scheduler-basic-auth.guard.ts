@@ -9,7 +9,7 @@ import { timingSafeEqual } from "node:crypto";
 import { Request } from "express";
 
 @Injectable()
-export class InternalNotificationBasicAuthGuard implements CanActivate {
+export class InternalSchedulerBasicAuthGuard implements CanActivate {
   private readonly authUsername: string;
   private readonly authPassword: string;
 
