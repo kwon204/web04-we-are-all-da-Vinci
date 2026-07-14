@@ -85,16 +85,18 @@ export class DailyRankingSnapshotService {
   }
 
   async createSnapshotForDate(dateKey: string): Promise<SnapshotResult> {
-    const exists =
-      await this.dailyUserRankingRepository.hasSnapshotForDate(dateKey);
-    if (exists) {
-      return { dateKey, skipped: true, savedCount: 0 };
-    }
+    return this.em.transactional(async () => {
+      const exists =
+        await this.dailyUserRankingRepository.hasSnapshotForDate(dateKey);
+      if (exists) {
+        return { dateKey, skipped: true, savedCount: 0 };
+      }
 
-    const snapshots = await this.buildSnapshotsForDate(dateKey);
-    await this.saveSnapshots(snapshots);
+      const snapshots = await this.buildSnapshotsForDate(dateKey);
+      await this.saveSnapshots(snapshots);
 
-    return { dateKey, skipped: false, savedCount: snapshots.length };
+      return { dateKey, skipped: false, savedCount: snapshots.length };
+    });
   }
 
   async buildSnapshotsForDate(

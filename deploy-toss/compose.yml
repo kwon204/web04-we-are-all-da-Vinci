@@ -47,6 +47,20 @@ services:
         "mikro-orm.migration.config.cjs",
       ]
 
+  maintenance:
+    image: ${IMAGE_TAG}
+    env_file:
+      - .env
+    command: ["node", "dist/data-maintenance.js"]
+    secrets:
+      - source: toss_private_key
+        target: /run/certs/davinci_private.key
+      - source: toss_public_cert
+        target: /run/certs/davinci_public.cert
+    environment:
+      - TOSS_CLIENT_KEY_PATH=/run/certs/davinci_private.key
+      - TOSS_CLIENT_CERT_PATH=/run/certs/davinci_public.cert
+
 secrets:
   toss_private_key:
     file: /home/ubuntu/deploy/certs/davinci_private.key

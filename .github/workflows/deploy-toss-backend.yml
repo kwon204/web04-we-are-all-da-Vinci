@@ -12,6 +12,10 @@ on:
       - "packages/toss-shared/**"
       - "packages/similarity/**"
 
+concurrency:
+  group: toss-production-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: [self-hosted, toss]
@@ -60,10 +64,20 @@ jobs:
           docker buildx build -f Dockerfile -t davinci-toss-migration --target migration ..
           docker buildx build -f Dockerfile -t davinci-toss --target runner ..
 
+      - name: Stop API for maintenance
+        working-directory: ./deploy-toss
+        run: |
+          IMAGE_TAG=davinci-toss docker compose -f compose.yml stop app
+
       - name: Run migration
         working-directory: ./deploy-toss
         run: |
           IMAGE_TAG=davinci-toss-migration docker compose -f compose.yml run --rm migration
+
+      - name: Run data maintenance
+        working-directory: ./deploy-toss
+        run: |
+          IMAGE_TAG=davinci-toss docker compose -f compose.yml run --rm maintenance
 
       - name: Deploy
         working-directory: ./deploy-toss
@@ -87,7 +101,8 @@ jobs:
         if: always()
         working-directory: ./deploy-toss
         run: |
-          IMAGE_TAG=davinci-toss docker compose -f compose.yml logs --tail=50 app
+          IMAGE_TAG=davinci-toss docker compose -f compose.yml ps
+          IMAGE_TAG=davinci-toss docker compose -f compose.yml logs --tail=50 app migration maintenance
 
       - name: Clean
         if: always()

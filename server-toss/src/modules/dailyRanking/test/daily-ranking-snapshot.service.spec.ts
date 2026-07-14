@@ -4,6 +4,9 @@ import { DailyRankingSnapshotService } from "../daily-ranking-snapshot.service";
 const buildEm = () => ({
   create: jest.fn((_entity: unknown, data: unknown) => data),
   flush: jest.fn(async () => undefined),
+  transactional: jest.fn(async (callback: () => Promise<unknown>) =>
+    callback(),
+  ),
 });
 
 const createService = ({
@@ -116,6 +119,7 @@ describe("일별 랭킹 스냅샷 서비스", () => {
       });
       expect(em.create).toHaveBeenCalledTimes(1);
       expect(em.flush).toHaveBeenCalledTimes(1);
+      expect(em.transactional).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -140,6 +144,41 @@ describe("일별 랭킹 스냅샷 서비스", () => {
         savedCount: 0,
       });
       expect(saveSnapshots).not.toHaveBeenCalled();
+    });
+
+    it("저장에 실패하면 트랜잭션을 실패시켜 다음 보충 실행 대상으로 남긴다", async () => {
+      const flushError = new Error("database unavailable");
+      const em = {
+        ...buildEm(),
+        flush: jest.fn().mockRejectedValue(flushError),
+      };
+      const drawingRepository = {
+        findDrawingsByCreatedAtRange: jest.fn().mockResolvedValue([
+          {
+            id: BigInt(1),
+            user: { userKey: 1, nickname: "첫번째" },
+            score: 90,
+            createdAt: new Date("2026-05-27T01:00:00.000Z"),
+          },
+        ]),
+      };
+      const dailyUserRankingRepository = {
+        hasSnapshotForDate: jest.fn().mockResolvedValue(false),
+      };
+      const service = createService({
+        drawingRepository,
+        dailyUserRankingRepository,
+        em,
+      });
+
+      await expect(service.createSnapshotForDate("2026-05-27")).rejects.toThrow(
+        flushError,
+      );
+
+      expect(
+        dailyUserRankingRepository.hasSnapshotForDate,
+      ).toHaveBeenCalledWith("2026-05-27");
+      expect(em.transactional).toHaveBeenCalledTimes(1);
     });
   });
 });
