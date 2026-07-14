@@ -1,5 +1,9 @@
 jest.mock("@mikro-orm/nestjs", () => ({
   InjectRepository: () => () => undefined,
+  MikroOrmModule: {
+    forRoot: () => ({ module: "MikroOrmModule" }),
+    forFeature: () => ({ module: "MikroOrmFeatureModule" }),
+  },
 }));
 jest.mock("@mikro-orm/core", () => {
   class UniqueConstraintViolationException extends Error {
