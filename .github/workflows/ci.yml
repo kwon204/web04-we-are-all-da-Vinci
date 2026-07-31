@@ -35,6 +35,10 @@ jobs:
               - 'client-toss/**'
             server-toss:
               - 'server-toss/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'package.json'
+              - '.npmrc'
             packages-shared:
               - 'packages/shared/**'
             packages-similarity:
