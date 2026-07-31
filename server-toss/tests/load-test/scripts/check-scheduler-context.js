@@ -14,10 +14,10 @@ async function run() {
   require("tsconfig-paths/register");
 
   const { MikroORM, RequestContext } = require("@mikro-orm/mysql");
-  const config = require("../../../src/mikro-orm.config.ts").default;
+  const config = require("../../../libs/database/src/mikro-orm.config.ts").default;
   const {
     SentNotification,
-  } = require("../../../src/modules/notification/sent-notification.entity.ts");
+  } = require("../../../libs/domain/src/modules/notification/sent-notification.entity.ts");
 
   console.log(
     `NODE_ENV=${process.env.NODE_ENV} allowGlobalContext=${config.allowGlobalContext}`,

@@ -1,10 +1,35 @@
 {
   "$schema": "https://json.schemastore.org/nest-cli",
   "collection": "@nestjs/schematics",
-  "sourceRoot": "src",
+  "sourceRoot": "apps/api/src",
   "compilerOptions": {
     "deleteOutDir": true,
     "tsConfigPath": "tsconfig.build.json",
     "builder": "tsc"
+  },
+  "monorepo": true,
+  "root": "apps/api",
+  "projects": {
+    "api": {
+      "type": "application",
+      "root": "apps/api",
+      "entryFile": "main",
+      "sourceRoot": "apps/api/src",
+      "compilerOptions": { "tsConfigPath": "tsconfig.build.json" }
+    },
+    "point-worker": {
+      "type": "application",
+      "root": "apps/point-worker",
+      "entryFile": "main",
+      "sourceRoot": "apps/point-worker/src",
+      "compilerOptions": { "tsConfigPath": "tsconfig.build.json" }
+    },
+    "maintenance": {
+      "type": "application",
+      "root": "apps/maintenance",
+      "entryFile": "main",
+      "sourceRoot": "apps/maintenance/src",
+      "compilerOptions": { "tsConfigPath": "tsconfig.build.json" }
+    }
   }
 }

@@ -8,15 +8,16 @@
   "scripts": {
     "prebuild": "npx rimraf dist",
     "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\"",
-    "start": "node dist/main",
-    "start:dev": "nest start --watch",
-    "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
-    "maintenance": "node dist/data-maintenance.js",
-    "start:point-worker": "node dist/point-worker.js",
-    "seed": "mikro-orm schema:update --run --safe --config ./src/mikro-orm.config.ts && mikro-orm seeder:run --config ./src/mikro-orm.config.ts",
+    "format": "prettier --write \"{apps,libs}/**/*.ts\"",
+    "format:check": "prettier --check \"{apps,libs}/**/*.ts\"",
+    "start": "node dist/apps/api/src/main",
+    "start:dev": "nest start api --watch",
+    "start:debug": "nest start api --debug --watch",
+    "start:prod": "node dist/apps/api/src/main",
+    "maintenance": "node dist/apps/maintenance/src/main.js",
+    "start:point-worker": "node dist/apps/point-worker/src/main.js",
+    "start:point-worker:gcp": "node dist/apps/point-worker/src/entrypoint.js",
+    "seed": "mikro-orm schema:update --run --safe --config ./libs/database/src/mikro-orm.config.ts && mikro-orm seeder:run --config ./libs/database/src/mikro-orm.config.ts",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./jest-integration.json --runInBand",
@@ -107,7 +108,7 @@
       "json",
       "ts"
     ],
-    "rootDir": "src",
+    "rootDir": ".",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
@@ -115,22 +116,26 @@
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],
-    "coverageDirectory": "../coverage",
+    "coverageDirectory": "./coverage",
     "testEnvironment": "node",
     "passWithNoTests": true,
     "setupFiles": [
-      "<rootDir>/test-setup/setup-mikro-orm-mocks.ts",
-      "<rootDir>/test-setup/setup-logger.ts"
+      "<rootDir>/libs/testkit/src/test-setup/setup-mikro-orm-mocks.ts",
+      "<rootDir>/libs/testkit/src/test-setup/setup-logger.ts"
     ],
     "transformIgnorePatterns": [
       "node_modules/(?!(\\.pnpm/)?(@mikro-orm))"
     ],
     "moduleNameMapper": {
-      "^src/(.*)$": "<rootDir>/$1",
-      "^@toss/shared$": "<rootDir>/../../packages/toss-shared/dist/index.js",
-      "^@toss/shared/(.*)$": "<rootDir>/../../packages/toss-shared/dist/$1",
-      "^@davinci/similarity$": "<rootDir>/../../packages/similarity/dist/index.js",
-      "^@davinci/similarity/(.*)$": "<rootDir>/../../packages/similarity/dist/$1"
+      "^@server-toss/platform/(.*)$": "<rootDir>/libs/platform/src/$1",
+      "^@server-toss/domain/(.*)$": "<rootDir>/libs/domain/src/$1",
+      "^@server-toss/toss-integration/(.*)$": "<rootDir>/libs/toss-integration/src/$1",
+      "^@server-toss/database/(.*)$": "<rootDir>/libs/database/src/$1",
+      "^@server-toss/testkit/(.*)$": "<rootDir>/libs/testkit/src/$1",
+      "^@toss/shared$": "<rootDir>/../packages/toss-shared/dist/index.js",
+      "^@toss/shared/(.*)$": "<rootDir>/../packages/toss-shared/dist/$1",
+      "^@davinci/similarity$": "<rootDir>/../packages/similarity/dist/index.js",
+      "^@davinci/similarity/(.*)$": "<rootDir>/../packages/similarity/dist/$1"
     }
   }
 }

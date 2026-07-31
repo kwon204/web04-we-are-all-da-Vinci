@@ -28,10 +28,10 @@ async function run() {
   require("tsconfig-paths/register");
 
   const { MikroORM } = require("@mikro-orm/mysql");
-  const config = require("../../../src/mikro-orm.config.ts").default;
+  const config = require("../../../libs/database/src/mikro-orm.config.ts").default;
   const {
     SentNotification,
-  } = require("../../../src/modules/notification/sent-notification.entity.ts");
+  } = require("../../../libs/domain/src/modules/notification/sent-notification.entity.ts");
 
   const sizes = (process.env.BENCH_SIZES || "1000,10000,50000,100000")
     .split(",")

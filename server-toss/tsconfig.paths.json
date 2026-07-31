@@ -2,7 +2,11 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "src/*": ["dist/*"]
+      "@server-toss/platform/*": ["dist/libs/platform/src/*"],
+      "@server-toss/domain/*": ["dist/libs/domain/src/*"],
+      "@server-toss/toss-integration/*": ["dist/libs/toss-integration/src/*"],
+      "@server-toss/database/*": ["dist/libs/database/src/*"],
+      "@server-toss/testkit/*": ["dist/libs/testkit/src/*"]
     }
   }
 }

@@ -1,0 +1,185 @@
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { getTodayKst } from "@server-toss/platform/common/util/today";
+import {
+  getSeoulDateKey,
+  getSeoulDayRange,
+} from "@server-toss/platform/common/util/time.util";
+import { PromptService } from "../prompt/prompt.service";
+import {
+  BULK_MESSAGE_MIN_RECIPIENTS,
+  NOTIFICATION_TYPE,
+} from "./notification.constants";
+import { NotificationService } from "./notification.service";
+import { SentNotificationRepository } from "./sent-notification.repository";
+
+@Injectable()
+export class DailyPromptNotificationScheduler {
+  private readonly logger = new Logger(DailyPromptNotificationScheduler.name);
+
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly notificationService: NotificationService,
+    private readonly sentNotificationRepository: SentNotificationRepository,
+    private readonly promptService: PromptService,
+  ) {}
+
+  async run(): Promise<void> {
+    if (
+      this.configService.get<string>("DAILY_PROMPT_NOTIFICATION_ENABLED") !==
+      "true"
+    ) {
+      this.logger.log(
+        { event: "daily_prompt.scheduler.skipped", reason: "feature_disabled" },
+        "일일 제시 그림 알림 발송이 비활성화되어 스킵해요.",
+      );
+      return;
+    }
+
+    const templateSetCode = this.configService.getOrThrow<string>(
+      "TOSS_TEMPLATE_DAILY_PROMPT",
+    );
+    const agreementTemplateCode = templateSetCode;
+    const todayRange = getSeoulDayRange();
+    const referenceId = getSeoulDateKey(todayRange.start);
+
+    try {
+      await this.promptService.getPromptByDate(getTodayKst());
+    } catch (err) {
+      if (err instanceof NotFoundException) {
+        this.logger.log(
+          {
+            event: "daily_prompt.scheduler.skipped",
+            reason: "prompt_not_found",
+            referenceId,
+          },
+          "오늘 제시 그림이 없어 발송 스킵해요.",
+        );
+        return;
+      }
+
+      this.logger.error(
+        { event: "daily_prompt.scheduler.failed", reason: "prompt_check", err },
+        "오늘 제시 그림 확인에 실패했어요.",
+      );
+      throw err;
+    }
+
+    let userKeys: number[];
+    try {
+      userKeys =
+        await this.sentNotificationRepository.findAgreedUserKeysWithNoDrawingIn(
+          {
+            range: todayRange,
+            type: NOTIFICATION_TYPE.DAILY_PROMPT,
+            referenceId,
+            agreementTemplateCode,
+          },
+        );
+    } catch (err) {
+      this.logger.error(
+        {
+          event: "daily_prompt.scheduler.failed",
+          reason: "target_query",
+          err,
+          referenceId,
+        },
+        "발송 대상 조회에 실패했어요.",
+      );
+      throw err;
+    }
+
+    if (userKeys.length === 0) {
+      this.logger.log(
+        {
+          event: "daily_prompt.scheduler.skipped",
+          reason: "no_target",
+          referenceId,
+        },
+        "오늘 미참여 사용자가 없어 발송 스킵해요.",
+      );
+      return;
+    }
+
+    if (userKeys.length >= BULK_MESSAGE_MIN_RECIPIENTS) {
+      try {
+        const result = await this.notificationService.sendBulk({
+          targets: userKeys.map((userKey) => ({ userKey, context: {} })),
+          type: NOTIFICATION_TYPE.DAILY_PROMPT,
+          referenceId,
+          templateSetCode,
+        });
+
+        this.logger.log(
+          {
+            event: "daily_prompt.scheduler.completed",
+            mode: "bulk",
+            referenceId,
+            total: userKeys.length,
+            ...result,
+          },
+          "오늘의 제시 그림 알림 대량 발송이 끝났어요.",
+        );
+      } catch (err) {
+        this.logger.error(
+          {
+            event: "daily_prompt.scheduler.failed",
+            reason: "bulk",
+            referenceId,
+            total: userKeys.length,
+            err,
+          },
+          "오늘의 제시 그림 알림 대량 발송 준비에 실패했어요.",
+        );
+        throw err;
+      }
+      return;
+    }
+
+    let sentCount = 0;
+    let skippedCount = 0;
+    let failedCount = 0;
+
+    for (const userKey of userKeys) {
+      try {
+        const result = await this.notificationService.send({
+          targetUserKey: userKey,
+          type: NOTIFICATION_TYPE.DAILY_PROMPT,
+          referenceId,
+          templateSetCode,
+          context: {},
+        });
+        if (result.sent) {
+          sentCount += 1;
+        } else {
+          skippedCount += 1;
+        }
+      } catch (err) {
+        failedCount += 1;
+        this.logger.error(
+          {
+            event: "daily_prompt.scheduler.failed",
+            reason: "send",
+            userKey,
+            referenceId,
+            err,
+          },
+          "사용자 발송에 실패해 다음 사용자로 넘어가요.",
+        );
+      }
+    }
+
+    this.logger.log(
+      {
+        event: "daily_prompt.scheduler.completed",
+        mode: "single",
+        referenceId,
+        total: userKeys.length,
+        sentCount,
+        skippedCount,
+        failedCount,
+      },
+      "오늘의 제시 그림 알림 발송이 끝났어요.",
+    );
+  }
+}

@@ -1,16 +1,20 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "rootDir": "src",
+    "rootDir": ".",
     "outDir": "dist",
     "tsBuildInfoFile": "dist/.tsbuildinfo",
     "paths": {
-      "src/*": ["./src/*"],
+      "@server-toss/platform/*": ["libs/platform/src/*"],
+      "@server-toss/domain/*": ["libs/domain/src/*"],
+      "@server-toss/toss-integration/*": ["libs/toss-integration/src/*"],
+      "@server-toss/database/*": ["libs/database/src/*"],
+      "@server-toss/testkit/*": ["libs/testkit/src/*"],
       "@toss/shared": ["../packages/toss-shared/dist/index.d.ts"],
       "@toss/shared/*": ["../packages/toss-shared/dist/*"],
       "@davinci/similarity": ["../packages/similarity/dist/index.d.ts"],
       "@davinci/similarity/*": ["../packages/similarity/dist/*"]
     }
   },
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts", "src/test-setup"]
+  "exclude": ["node_modules", "test", "dist", "**/*spec.ts", "libs/testkit/src/test-setup"]
 }

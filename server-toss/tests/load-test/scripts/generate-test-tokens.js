@@ -89,8 +89,8 @@ async function run() {
   }
 
   const { MikroORM } = require("@mikro-orm/mysql");
-  const mikroOrmConfig = require("../../../src/mikro-orm.config.ts").default;
-  const { User } = require("../../../src/modules/user/user.entity.ts");
+  const mikroOrmConfig = require("../../../libs/database/src/mikro-orm.config.ts").default;
+  const { User } = require("../../../libs/domain/src/modules/user/user.entity.ts");
 
   const orm = await MikroORM.init(mikroOrmConfig);
 
