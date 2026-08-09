@@ -21,7 +21,7 @@ Apps-in-Toss 미니앱용 NestJS REST API. 매 획 단위의 유사도 계산과
 
 ## 부팅 흐름
 
-`src/main.ts`는 다음 순서로 초기화한다.
+`apps/api/src/main.ts`는 다음 순서로 초기화한다.
 
 1. Nest 앱 생성 + `ZodExceptionFilter` 전역 등록 + CORS/Swagger(`/docs`) 세팅
 2. 비-프로덕션에서 `MikroORM.migrator.up()` 자동 실행
@@ -107,3 +107,21 @@ node server-toss/scripts/bench-preprocess.mjs
 
 - `BENCH_WARMUP`, `BENCH_N`, `BENCH_URL` 환경변수로 조정 가능.
 - 캐시 off/on 비교: `DISABLE_PROMPT_CACHE=true pnpm --filter server-toss start:dev`로 재기동 후 동일 벤치 실행.
+
+## GCP 런타임 분리
+
+`server-toss`는 하나의 워크스페이스에서 세 실행 단위를 빌드한다. 도메인·ORM·공유 계약은 같은 버전으로 유지하고, GCP에서만 독립적으로 배포·확장한다.
+
+| 실행 단위     | 명령                                                            | GCP 대상                              |
+| ------------- | --------------------------------------------------------------- | ------------------------------------- |
+| API           | `node dist/apps/api/src/main.js`                                | Cloud Run Service                     |
+| Point Worker  | `node dist/apps/point-worker/src/entrypoint.js`                 | 크기 1의 zonal Managed Instance Group |
+| migration     | `pnpm run migration:up --config mikro-orm.migration.config.cjs` | Cloud Run Job                         |
+| 콘텐츠 동기화 | `node dist/apps/maintenance/src/main.js --content`              | Cloud Run Job                         |
+| 랭킹 보정     | `node dist/apps/maintenance/src/main.js --rankings`             | 수동 Cloud Run Job                    |
+
+`data-maintenance`를 인자 없이 실행하면 이전과 같이 콘텐츠 동기화와 랭킹 보정을 모두 실행한다. CD에서는 `--content`만 사용하며 `server-toss/data/**`가 변경된 경우에만 실행한다.
+
+Point Worker VM에는 `TOSS_POINT_WORKER_SECRET_ENV` GitHub Actions 변수로 `ENV_NAME=secret-name` 목록을 지정한다. 시작 entrypoint가 VM 서비스 계정으로 Secret Manager의 최신 값을 읽어 해당 환경변수에 주입한 후 Worker를 시작한다. VM 서비스 계정에는 최소한 Artifact Registry Reader와 사용한 secret별 Secret Manager Secret Accessor 권한이 필요하다. Worker는 포트 8080의 `/health`를 제공하므로 MIG의 HTTP health check와 방화벽을 `TOSS_POINT_WORKER_NETWORK_TAG`로 미리 연결한다.
+
+배포 워크플로우는 API/Job 변수 외에 다음 GitHub Actions 변수를 요구한다: `TOSS_CLOUD_RUN_MIGRATION_JOB`, `TOSS_CLOUD_RUN_CONTENT_JOB`, `TOSS_POINT_WORKER_MIG`, `TOSS_POINT_WORKER_ZONE`, `TOSS_POINT_WORKER_MACHINE_TYPE`, `TOSS_POINT_WORKER_SERVICE_ACCOUNT`, `TOSS_POINT_WORKER_NETWORK`, `TOSS_POINT_WORKER_SUBNET`, `TOSS_POINT_WORKER_NETWORK_TAG`, `TOSS_POINT_WORKER_RUNTIME_ENV_VARS`, `TOSS_POINT_WORKER_SECRET_ENV`.

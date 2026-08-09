@@ -1,4 +1,4 @@
-name: Deploy Toss Backend to AWS
+name: Deploy Toss workloads to GCP
 
 on:
   workflow_dispatch:
@@ -11,87 +11,220 @@ on:
       - "deploy-toss/**"
       - "packages/toss-shared/**"
       - "packages/similarity/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - ".npmrc"
+
+concurrency:
+  group: toss-production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT_ID: ${{ vars.TOSS_GCP_PROJECT_ID }}
+  GCP_REGION: ${{ vars.TOSS_GCP_REGION }}
+  ARTIFACT_REPOSITORY: ${{ vars.TOSS_ARTIFACT_REPOSITORY }}
+  API_SERVICE: ${{ vars.TOSS_CLOUD_RUN_SERVICE }}
+  MIGRATION_JOB: ${{ vars.TOSS_CLOUD_RUN_MIGRATION_JOB }}
+  CONTENT_JOB: ${{ vars.TOSS_CLOUD_RUN_CONTENT_JOB }}
+  VPC_NETWORK: ${{ vars.TOSS_VPC_NETWORK }}
+  VPC_SUBNET: ${{ vars.TOSS_VPC_SUBNET }}
+  RUNTIME_ENV_VARS: ${{ vars.TOSS_RUNTIME_ENV_VARS }}
+  RUNTIME_SECRETS: ${{ vars.TOSS_RUNTIME_SECRETS }}
+  WORKER_MIG: ${{ vars.TOSS_POINT_WORKER_MIG }}
+  WORKER_ZONE: ${{ vars.TOSS_POINT_WORKER_ZONE }}
+  WORKER_MACHINE_TYPE: ${{ vars.TOSS_POINT_WORKER_MACHINE_TYPE }}
+  WORKER_SERVICE_ACCOUNT: ${{ vars.TOSS_POINT_WORKER_SERVICE_ACCOUNT }}
+  WORKER_NETWORK: ${{ vars.TOSS_POINT_WORKER_NETWORK }}
+  WORKER_SUBNET: ${{ vars.TOSS_POINT_WORKER_SUBNET }}
+  WORKER_NETWORK_TAG: ${{ vars.TOSS_POINT_WORKER_NETWORK_TAG }}
+  WORKER_RUNTIME_ENV_VARS: ${{ vars.TOSS_POINT_WORKER_RUNTIME_ENV_VARS }}
+  WORKER_SECRET_ENV: ${{ vars.TOSS_POINT_WORKER_SECRET_ENV }}
+  WORKLOAD_IDENTITY_PROVIDER: ${{ vars.TOSS_WORKLOAD_IDENTITY_PROVIDER }}
+  DEPLOY_SERVICE_ACCOUNT: ${{ vars.TOSS_DEPLOY_SERVICE_ACCOUNT }}
 
 jobs:
   deploy:
-    runs-on: [self-hosted, toss]
-    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
 
     steps:
+      - name: Validate deployment configuration
+        run: |
+          set -euo pipefail
+          required=(
+            GCP_PROJECT_ID GCP_REGION ARTIFACT_REPOSITORY API_SERVICE
+            MIGRATION_JOB CONTENT_JOB VPC_NETWORK VPC_SUBNET
+            RUNTIME_ENV_VARS RUNTIME_SECRETS WORKER_MIG WORKER_ZONE
+            WORKER_MACHINE_TYPE WORKER_SERVICE_ACCOUNT WORKER_NETWORK
+            WORKER_SUBNET WORKER_NETWORK_TAG WORKER_RUNTIME_ENV_VARS WORKLOAD_IDENTITY_PROVIDER
+            DEPLOY_SERVICE_ACCOUNT
+          )
+          for name in "${required[@]}"; do
+            if [ -z "${!name}" ]; then
+              echo "Missing GitHub Actions variable: ${name}"
+              exit 1
+            fi
+          done
+
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
-      - name: Copy .env file
+      - name: Detect content definition changes
+        id: changes
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            content:
+              - 'server-toss/data/**'
+
+      - name: Authenticate to Google Cloud with WIF
+        uses: google-github-actions/auth@v3
+        with:
+          service_account: ${{ env.DEPLOY_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: ">= 541.0.0"
+
+      - name: Configure Artifact Registry authentication
+        run: |
+          gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Build and push workload images
         working-directory: ./deploy-toss
         run: |
-          cp ~/deploy/.env ./.env
+          set -euo pipefail
+          IMAGE_BASE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPOSITORY}/toss-server:${GITHUB_SHA}"
+          echo "API_IMAGE_REF=${IMAGE_BASE}" >> "$GITHUB_ENV"
+          echo "MIGRATION_IMAGE_REF=${IMAGE_BASE}-migration" >> "$GITHUB_ENV"
+          echo "WORKER_IMAGE_REF=${IMAGE_BASE}-worker" >> "$GITHUB_ENV"
+          docker buildx build --push -f Dockerfile -t "${IMAGE_BASE}" --target runner ..
+          docker buildx build --push -f Dockerfile -t "${IMAGE_BASE}-migration" --target migration ..
+          docker buildx build --push -f Dockerfile -t "${IMAGE_BASE}-worker" --target point-worker ..
 
-          if [ ! -f .env ]; then
-            echo ".env file not exists"
-            exit 1
-          fi
-
-          echo ".env file copied."
-
-      - name: Copy secret file
+      - name: Run database migration job
         run: |
-          set -e 
+          set -euo pipefail
+          gcloud run jobs deploy "${MIGRATION_JOB}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --image "${MIGRATION_IMAGE_REF}" \
+            --network "${VPC_NETWORK}" \
+            --subnet "${VPC_SUBNET}" \
+            --vpc-egress private-ranges-only \
+            --set-env-vars "${RUNTIME_ENV_VARS}" \
+            --set-secrets "${RUNTIME_SECRETS}" \
+            --max-retries 1 \
+            --task-timeout 10m
+          gcloud run jobs execute "${MIGRATION_JOB}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --wait
 
-          mkdir -p ~/deploy/certs
-          printf '%s' "$PRIVATE_KEY" | base64 --decode | sudo tee ~/deploy/certs/davinci_private.key > /dev/null
-          printf '%s' "$PUBLIC_CERT" | base64 --decode | sudo tee ~/deploy/certs/davinci_public.cert > /dev/null
-
-          sudo chown 1001:1001 ~/deploy/certs/davinci_private.key
-          sudo chown 1001:1001 ~/deploy/certs/davinci_public.cert
-
-          sudo chmod 400 ~/deploy/certs/davinci_private.key 
-          sudo chmod 400 ~/deploy/certs/davinci_public.cert
-
-          test -s ~/deploy/certs/davinci_private.key
-          test -s ~/deploy/certs/davinci_public.cert
-
-        env:
-          PRIVATE_KEY: ${{ secrets.DAVINCI_PRIVATE_KEY }}
-          PUBLIC_CERT: ${{ secrets.DAVINCI_PUBLIC_CERT }}
-
-      - name: Build image
-        working-directory: ./deploy-toss
+      - name: Run changed content synchronization job
+        if: steps.changes.outputs.content == 'true'
         run: |
-          docker buildx build -f Dockerfile -t davinci-toss-migration --target migration ..
-          docker buildx build -f Dockerfile -t davinci-toss --target runner ..
+          set -euo pipefail
+          gcloud run jobs deploy "${CONTENT_JOB}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --image "${API_IMAGE_REF}" \
+            --command node \
+            --args dist/apps/maintenance/src/main.js,--content \
+            --network "${VPC_NETWORK}" \
+            --subnet "${VPC_SUBNET}" \
+            --vpc-egress private-ranges-only \
+            --set-env-vars "${RUNTIME_ENV_VARS}" \
+            --set-secrets "${RUNTIME_SECRETS}" \
+            --max-retries 1 \
+            --task-timeout 15m
+          gcloud run jobs execute "${CONTENT_JOB}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --wait
 
-      - name: Run migration
-        working-directory: ./deploy-toss
+      - name: Roll point worker MIG to the immutable image
         run: |
-          IMAGE_TAG=davinci-toss-migration docker compose -f compose.yml run --rm migration
+          set -euo pipefail
+          TEMPLATE_NAME="toss-point-worker-${GITHUB_SHA::12}"
+          gcloud compute instance-templates create-with-container "${TEMPLATE_NAME}" \
+            --project "${GCP_PROJECT_ID}" \
+            --machine-type "${WORKER_MACHINE_TYPE}" \
+            --service-account "${WORKER_SERVICE_ACCOUNT}" \
+            --scopes cloud-platform \
+            --network "${WORKER_NETWORK}" \
+            --subnet "${WORKER_SUBNET}" \
+            --tags "${WORKER_NETWORK_TAG}" \
+            --metadata google-logging-enabled=true \
+            --container-image "${WORKER_IMAGE_REF}" \
+            --container-restart-policy always \
+            --container-env "${WORKER_RUNTIME_ENV_VARS},GCP_PROJECT_ID=${GCP_PROJECT_ID},WORKER_SECRET_ENV=${WORKER_SECRET_ENV},WORKER_HEALTH_PORT=8080"
+          gcloud compute instance-groups managed set-instance-template "${WORKER_MIG}" \
+            --project "${GCP_PROJECT_ID}" \
+            --zone "${WORKER_ZONE}" \
+            --template "${TEMPLATE_NAME}"
+          gcloud compute instance-groups managed rolling-action start-update "${WORKER_MIG}" \
+            --project "${GCP_PROJECT_ID}" \
+            --zone "${WORKER_ZONE}" \
+            --version "template=${TEMPLATE_NAME}" \
+            --max-surge 0 \
+            --max-unavailable 1
+          gcloud compute instance-groups managed wait-until --stable "${WORKER_MIG}" \
+            --project "${GCP_PROJECT_ID}" \
+            --zone "${WORKER_ZONE}"
 
-      - name: Deploy
-        working-directory: ./deploy-toss
+      - name: Deploy and check candidate API revision
         run: |
-          IMAGE_TAG=davinci-toss docker compose -f compose.yml up -d app
-
-      - name: Health check
-        run: |
-          for i in $(seq 1 10); do
-            if curl -fsS --max-time 2 http://localhost:3000/health > /dev/null 2>&1; then
-              echo "Health check passed (attempt $i)"
+          set -euo pipefail
+          CANDIDATE_TAG="candidate-${GITHUB_SHA::12}"
+          gcloud run deploy "${API_SERVICE}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --image "${API_IMAGE_REF}" \
+            --revision-suffix "${GITHUB_SHA::12}" \
+            --tag "${CANDIDATE_TAG}" \
+            --no-traffic \
+            --network "${VPC_NETWORK}" \
+            --subnet "${VPC_SUBNET}" \
+            --vpc-egress private-ranges-only \
+            --set-env-vars "${RUNTIME_ENV_VARS}" \
+            --set-secrets "${RUNTIME_SECRETS}"
+          CANDIDATE_URL=$(gcloud run services describe "${API_SERVICE}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --format=json | jq -r --arg tag "${CANDIDATE_TAG}" '.status.traffic[] | select(.tag == $tag) | .url')
+          test -n "${CANDIDATE_URL}"
+          for _ in $(seq 1 12); do
+            if curl --fail --silent --show-error --max-time 10 \
+              --header "Authorization: Bearer $(gcloud auth print-identity-token)" \
+              "${CANDIDATE_URL}/health" > /dev/null; then
               exit 0
             fi
-            echo "Health check failed (attempt $i/10)"
             sleep 5
           done
-          echo "Health check failed after 10 attempts"
           exit 1
 
-      - name: Show container logs
-        if: always()
-        working-directory: ./deploy-toss
+      - name: Route traffic to the candidate revision
         run: |
-          IMAGE_TAG=davinci-toss docker compose -f compose.yml logs --tail=50 app
+          API_REVISION=$(gcloud run services describe "${API_SERVICE}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --format='value(status.latestReadyRevisionName)')
+          gcloud run services update-traffic "${API_SERVICE}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --to-revisions "${API_REVISION}=100"
 
-      - name: Clean
-        if: always()
+      - name: Show failure diagnostics
+        if: failure()
         run: |
-          docker image prune -f --filter "until=336h"
-          docker builder prune -f --filter "until=336h"
-          docker container prune -f --filter "until=168h"
+          gcloud run services describe "${API_SERVICE}" --project "${GCP_PROJECT_ID}" --region "${GCP_REGION}" || true
+          gcloud run jobs executions list --project "${GCP_PROJECT_ID}" --region "${GCP_REGION}" --job "${MIGRATION_JOB}" || true
+          gcloud compute instance-groups managed describe "${WORKER_MIG}" --project "${GCP_PROJECT_ID}" --zone "${WORKER_ZONE}" || true

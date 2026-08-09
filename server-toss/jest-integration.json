@@ -1,9 +1,9 @@
 {
   "moduleFileExtensions": ["js", "json", "ts"],
-  "rootDir": "src",
+  "rootDir": ".",
   "testRegex": ".*\\.test\\.ts$",
   "collectCoverageFrom": ["**/*.(t|j)s"],
-  "coverageDirectory": "../coverage",
+  "coverageDirectory": "./coverage",
   "testEnvironment": "node",
   "passWithNoTests": true,
   "transform": {
@@ -22,11 +22,15 @@
   "transformIgnorePatterns": ["node_modules/(?!(\\.pnpm/)?(@mikro-orm))"],
   "moduleNameMapper": {
     "^(\\.{1,2}/.*)\\.js$": "$1",
-    "^src/(.*)$": "<rootDir>/$1",
-    "^@toss/shared$": "<rootDir>/../../packages/toss-shared/dist/index.js",
-    "^@toss/shared/(.*)$": "<rootDir>/../../packages/toss-shared/dist/$1",
-    "^@davinci/similarity$": "<rootDir>/../../packages/similarity/dist/index.js",
-    "^@davinci/similarity/(.*)$": "<rootDir>/../../packages/similarity/dist/$1"
+    "^@server-toss/platform/(.*)$": "<rootDir>/libs/platform/src/$1",
+    "^@server-toss/domain/(.*)$": "<rootDir>/libs/domain/src/$1",
+    "^@server-toss/toss-integration/(.*)$": "<rootDir>/libs/toss-integration/src/$1",
+    "^@server-toss/database/(.*)$": "<rootDir>/libs/database/src/$1",
+    "^@server-toss/testkit/(.*)$": "<rootDir>/libs/testkit/src/$1",
+    "^@toss/shared$": "<rootDir>/../packages/toss-shared/dist/index.js",
+    "^@toss/shared/(.*)$": "<rootDir>/../packages/toss-shared/dist/$1",
+    "^@davinci/similarity$": "<rootDir>/../packages/similarity/dist/index.js",
+    "^@davinci/similarity/(.*)$": "<rootDir>/../packages/similarity/dist/$1"
   },
   "preset": "ts-jest/presets/default-esm",
   "extensionsToTreatAsEsm": [".ts"]

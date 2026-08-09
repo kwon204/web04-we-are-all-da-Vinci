@@ -10,21 +10,24 @@
     "allowSyntheticDefaultImports": true,
     "target": "esnext",
     "sourceMap": true,
-    "rootDir": "src",
-    "outDir": "dist/src",
+    "baseUrl": ".",
     "incremental": true,
     "skipLibCheck": true,
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "types": ["node", "jest"],
     "paths": {
-      "src/*": ["./src/*"],
+      "@server-toss/platform/*": ["libs/platform/src/*"],
+      "@server-toss/domain/*": ["libs/domain/src/*"],
+      "@server-toss/toss-integration/*": ["libs/toss-integration/src/*"],
+      "@server-toss/database/*": ["libs/database/src/*"],
+      "@server-toss/testkit/*": ["libs/testkit/src/*"],
       "@toss/shared": ["../packages/toss-shared/dist/index.d.ts"],
       "@toss/shared/*": ["../packages/toss-shared/dist/*"],
       "@davinci/similarity": ["../packages/similarity/dist/index.d.ts"],
       "@davinci/similarity/*": ["../packages/similarity/dist/*"]
     }
   },
-  "include": ["src/**/*", "mikro-orm.migration.config.cjs"],
+  "include": ["apps/**/*", "libs/**/*", "mikro-orm.migration.config.cjs"],
   "exclude": ["dist", "node_modules"]
 }

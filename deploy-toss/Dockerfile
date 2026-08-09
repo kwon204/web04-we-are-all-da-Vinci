@@ -4,8 +4,12 @@ WORKDIR /app
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
+ENV COREPACK_DEFAULT_TO_LATEST=0
 
-RUN corepack enable
+ARG PNPM_VERSION=10.20.0
+
+RUN corepack enable && \
+    corepack prepare pnpm@${PNPM_VERSION} --activate
 
 FROM base AS builder
 
@@ -29,7 +33,7 @@ RUN pnpm --filter server-toss build
 FROM builder AS migration
 WORKDIR /app/server-toss
 
-RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
+RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
 
 ENV NODE_ENV=production
 CMD ["pnpm", "run", "migration:up", "--config", "mikro-orm.migration.config.cjs"]
@@ -65,4 +69,8 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 CMD node -e "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/apps/api/src/main.js"]
+
+FROM runner AS point-worker
+
+CMD ["node", "dist/apps/point-worker/src/entrypoint.js"]
