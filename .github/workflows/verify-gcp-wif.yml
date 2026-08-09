@@ -1,0 +1,77 @@
+name: Verify GCP WIF
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT_ID: ${{ vars.TOSS_GCP_PROJECT_ID }}
+  GCP_REGION: ${{ vars.TOSS_GCP_REGION }}
+  ARTIFACT_REPOSITORY: ${{ vars.TOSS_ARTIFACT_REPOSITORY }}
+  WORKLOAD_IDENTITY_PROVIDER: ${{ vars.TOSS_WORKLOAD_IDENTITY_PROVIDER }}
+  DEPLOY_SERVICE_ACCOUNT: ${{ vars.TOSS_DEPLOY_SERVICE_ACCOUNT }}
+
+jobs:
+  verify:
+    name: Verify keyless authentication
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Validate configuration
+        run: |
+          set -euo pipefail
+          required=(
+            GCP_PROJECT_ID
+            GCP_REGION
+            ARTIFACT_REPOSITORY
+            WORKLOAD_IDENTITY_PROVIDER
+            DEPLOY_SERVICE_ACCOUNT
+          )
+          for name in "${required[@]}"; do
+            if [ -z "${!name}" ]; then
+              echo "Missing GitHub Actions variable: ${name}"
+              exit 1
+            fi
+          done
+
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Authenticate to Google Cloud with WIF
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: ">= 541.0.0"
+
+      - name: Verify authentication and Artifact Registry access
+        run: |
+          set -euo pipefail
+
+          ACTIVE_ACCOUNT="$(gcloud auth list \
+            --filter='status:ACTIVE' \
+            --format='value(account)')"
+
+          echo "GitHub ref: ${GITHUB_REF}"
+          echo "Active account: ${ACTIVE_ACCOUNT}"
+          test "${ACTIVE_ACCOUNT}" = "${DEPLOY_SERVICE_ACCOUNT}"
+
+          gcloud auth print-access-token > /dev/null
+
+          REPOSITORY_NAME="$(gcloud artifacts repositories describe "${ARTIFACT_REPOSITORY}" \
+            --project="${GCP_PROJECT_ID}" \
+            --location="${GCP_REGION}" \
+            --format='value(name)')"
+
+          test -n "${REPOSITORY_NAME}"
+          echo "Artifact Registry access verified: ${REPOSITORY_NAME}"
+          echo "GCP WIF authentication verified successfully."
